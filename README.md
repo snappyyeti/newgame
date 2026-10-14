@@ -6,7 +6,7 @@ Acesta este **pasul 1 din MVP (prototipul gri)** plus miezul regizorului de grup
 
 ## Cum îl deschizi
 
-1. Unity Hub → **Add project from disk** → folderul repo-ului. Versiunea fixată e Unity 6 (`6000.0.23f1`); merge și orice 6000.x mai nou.
+1. Unity Hub → **Add project from disk** → folderul repo-ului. Versiunea fixată e Unity `6000.6.3f1`; merge și orice Unity 6 (6000.x).
 2. Deschide `Assets/Scenes/Main.unity` și apasă **Play**. Scena e goală intenționat: `GameController` construiește arena din primitive la pornire, deci jocul pornește din orice scenă.
 3. În Game view alege o rezoluție portret (de exemplu 1080×2340).
 
