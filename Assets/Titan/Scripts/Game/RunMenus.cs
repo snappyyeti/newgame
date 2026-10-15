@@ -6,7 +6,9 @@ namespace Titan.Game
     /// <summary>
     /// The run menus (RET-1, RET-2): the game-over panel with the honest record line and the next goal, the free
     /// checkpoint buttons, the launch overlay and the checkpoint toast. Checkpoints are free: nothing in this file may
-    /// touch an ad API (RetentionTests greps it).
+    /// touch an ad API (RetentionTests greps it). The three results buttons leave through LeaveResults, which starts
+    /// the chosen run whatever happens in between (the between-runs rules live in GameController.Ads.cs, ADS-1); the
+    /// note under the buttons and the footer come from there too. The launch overlay starts its run directly.
     /// </summary>
     public sealed partial class GameController
     {
@@ -18,7 +20,8 @@ namespace Titan.Game
         void DrawGameOver(float w, float s)
         {
             bool hasCheckpoint = profile.HasCheckpoint;
-            float height = (hasCheckpoint ? 690 : 610) * s;
+            float footer = ResultsFooterHeight(s);
+            float height = (hasCheckpoint ? 690 : 610) * s + footer + (resultsButtonNote != null ? 3 * 18 * s : 0f);
             var panel = new Rect(w * 0.05f, Mathf.Max(Screen.height * 0.16f, (Screen.height - height) / 2f), w * 0.9f, height);
             GUI.color = new Color(0.08f, 0.08f, 0.12f, 0.88f);
             GUI.DrawTexture(panel, white);
@@ -56,28 +59,46 @@ namespace Titan.Game
             y += 44 * s;
 
             float bw = panel.width * 0.6f;
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && resultsInteractive;
+            var note = new GUIStyle(small) { fontSize = Mathf.RoundToInt(14 * s), fontStyle = FontStyle.Normal };
+            note.normal.textColor = new Color(0.85f, 0.85f, 0.9f);
+            float noteH = resultsButtonNote != null ? 18 * s : 0f;
             if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 100 * s), "Joacă din nou", button))
             {
-                StartRun(session.PlayAgainStart(NewSeed()), true);
+                GUI.enabled = wasEnabled;
+                LeaveResults(session.PlayAgainStart(NewSeed()));
                 return;
             }
-            y += 110 * s;
+            y += 100 * s;
+            if (resultsButtonNote != null) GUI.Label(new Rect(panel.x, y, panel.width, noteH), resultsButtonNote, note);
+            y += 10 * s + noteH;
             var secondary = new GUIStyle(button) { fontSize = Mathf.RoundToInt(24 * s) };
             if (hasCheckpoint)
             {
                 if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), "Reia ciclul (titanul #" + profile.checkpoint.n + ")", secondary))
                 {
-                    StartRun(RunSession.ResumeStart(profile).Value, true);
+                    GUI.enabled = wasEnabled;
+                    LeaveResults(RunSession.ResumeStart(profile).Value);
                     return;
                 }
-                y += 76 * s;
+                y += 66 * s;
+                if (resultsButtonNote != null) GUI.Label(new Rect(panel.x, y, panel.width, noteH), resultsButtonNote, note);
+                y += 10 * s + noteH;
             }
             if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), "Joc nou", secondary))
             {
+                GUI.enabled = wasEnabled;
                 var start = RunSession.NewGameStart(profile, NewSeed());
                 SaveProfile(); // the checkpoint is gone
-                StartRun(start, true);
+                LeaveResults(start);
+                return;
             }
+            y += 66 * s;
+            if (resultsButtonNote != null) GUI.Label(new Rect(panel.x, y, panel.width, noteH), resultsButtonNote, note);
+            y += 10 * s + noteH;
+            DrawResultsFooter(new Rect(panel.x, y, panel.width, footer), s);
+            GUI.enabled = wasEnabled;
         }
 
         /// <summary>App launch after 3+ runs with a checkpoint: "Continuă (titanul #n)" (primary, focused) or "Joc nou".</summary>

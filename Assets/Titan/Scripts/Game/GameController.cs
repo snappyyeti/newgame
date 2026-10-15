@@ -123,6 +123,7 @@ namespace Titan.Game
             telemetry.Track(Telemetry.SessionStart, today, daysSinceLast);
             Settings.Bind(profile.settings, SaveProfile);
             SaveProfile();
+            InitAds();
 
             view = new GameObject("Arena").AddComponent<ArenaView>();
             view.Build(cfg, cam, fx);
@@ -151,6 +152,7 @@ namespace Titan.Game
             launchOverlay = false;
 
             session = new RunSession(profile, telemetry, cfg, start);
+            ResetRunAds();
             fx.StopRunEffects();
             view.Reset(session.Game);
             shownScore = start.Score;
@@ -175,6 +177,7 @@ namespace Titan.Game
         void OnApplicationPause(bool paused)
         {
             if (paused) SaveProfile();
+            OnAdsAppPause(paused);
         }
 
         void OnApplicationQuit() => SaveProfile();
@@ -195,14 +198,19 @@ namespace Titan.Game
             CheckLogExport();
             if (game == null) return;
 
-            if (!game.IsOver)
+            // Ad cards and ads first: while one is up (the pause contract) the run does not tick and the tray takes no taps.
+            UpdateAds(Time.unscaledDeltaTime);
+            bool frozen = PlayFrozen;
+            if (!game.IsOver && !frozen)
             {
                 if (TryGetTap(out var tap)) HandleTap(tap);
-                game.Tick(Mathf.Min(Time.deltaTime, 0.1f));
-                PlayEvents();
+                float dt = Mathf.Min(Time.deltaTime, 0.1f);
+                game.Tick(dt);
+                governor.AddPlaySeconds(dt);
                 frameMs[Mathf.Clamp(Mathf.RoundToInt(Time.unscaledDeltaTime * 1000f), 0, frameMs.Length - 1)]++;
             }
-            if ((session.Update(Time.unscaledDeltaTime) & SessionSignal.NewRecord) != 0)
+            if (game.Events.Count > 0) PlayEvents(); // also the Revived event of a revive granted from a card
+            if ((session.Update(frozen ? 0f : Time.unscaledDeltaTime) & SessionSignal.NewRecord) != 0)
             {
                 ShowBanner("RECORD NOU!", ArenaView.BannerGold, 1.5f);
                 fx.RecordFanfare();
@@ -231,19 +239,17 @@ namespace Titan.Game
         {
             int i = view.TrayAtScreen(screen);
             if (i < 0) return;
-            // A refused tap only shakes the cannon and says why. It NEVER opens anything else (no ad card, DESIGN.md 4.2.8).
-            switch (game.DeployBlock(i))
+            // A refused tap only shakes the cannon and says why. It NEVER opens anything else (DESIGN.md 4.2.8, 11.4):
+            // the tray-tap path is TrayTap.Handle, which cannot reach a card (EthicsLockTests).
+            switch (TrayTap.Handle(game, i))
             {
-                case DeployBlockReason.None:
-                    game.Deploy(i);
-                    break;
                 case DeployBlockReason.WouldJam:
                     view.ShakeTray(i);
                     ShowBanner("Ar bloca ultimul loc! Alege o culoare vizibilă.", ArenaView.BannerGold, 1.6f);
                     break;
                 case DeployBlockReason.LineFull:
                     view.ShakeTray(i);
-                    ShowBanner("Toate cele " + game.Line.Length + " locuri sunt ocupate!", Color.white, 2f);
+                    ShowBanner("Toate cele " + game.ActiveSlots + " locuri sunt ocupate!", Color.white, 2f);
                     break;
             }
         }
@@ -254,7 +260,10 @@ namespace Titan.Game
             foreach (var e in game.Events)
             {
                 view.Play(e);
+                TrackAdEvent(e);
                 if (e.Kind == EventKind.TitanDefeated) DefeatBanner(e);
+                // A revivable loss waits for the "A doua suflare" card: the session hears about it only if the run really ends.
+                if (e.Kind == EventKind.GameOver && OfferSecondWind(e)) continue;
                 var signal = session.Process(e);
                 if ((signal & SessionSignal.NewFurthestTitan) != 0) QueueBanner("TITAN NOU: #" + e.Level, ArenaView.BannerGold, 1.4f);
                 if ((signal & SessionSignal.CheckpointSaved) != 0)
@@ -265,7 +274,7 @@ namespace Titan.Game
                 signals |= signal;
             }
             game.Events.Clear();
-            if ((signals & SessionSignal.RunEnded) != 0) telemetry.Track(Telemetry.Perf, FrameP95(), game.Level);
+            if ((signals & SessionSignal.RunEnded) != 0) RunReallyEnded();
             if ((signals & SessionSignal.Save) != 0) SaveProfile();
         }
 
@@ -490,7 +499,7 @@ namespace Titan.Game
                 if (!game.IsOver) CutTag(pos.Value, c, i, s);
             }
             view.ForEachDyingTrayTag((pos, color, ammo) => AmmoTag(pos, color, ammo, TagState.Ready, s));
-            for (int i = 0; i < game.Line.Length; i++)
+            for (int i = 0; i < game.ActiveSlots; i++)
             {
                 var c = game.Line[i];
                 var pos = view.LineLabel(i);
@@ -540,7 +549,9 @@ namespace Titan.Game
             DrawBigPopup(s);
             DrawConfetti(s);
 
-            if (game.IsOver) DrawGameOver(w, s);
+            // A held game over shows the revive card instead of the results.
+            if (game.IsOver && pendingGameOver == null) DrawGameOver(w, s);
+            DrawAdLayer(s);
         }
 
         enum TagState { Ready, Waiting, Dead }
@@ -582,8 +593,8 @@ namespace Titan.Game
             int others = 0;
             for (int i = 0; i < game.Tray.Length; i++)
                 if (i != traySlot && game.Tray[i] != null && game.Tray[i].Color == c.Color) others += game.Tray[i].Ammo;
-            foreach (var l in game.Line)
-                if (l != null && l.Color == c.Color) others += l.Ammo;
+            for (int sl = 0; sl < game.ActiveSlots; sl++)
+                if (game.Line[sl] != null && game.Line[sl].Color == c.Color) others += game.Line[sl].Ammo;
             if (others == 0) return;
             int shots = game.ShotsToCut(c.Color, game.DeploySlot, c.Ammo + others);
             if (shots <= 0) return;
@@ -665,8 +676,8 @@ namespace Titan.Game
         void SlotPips(float s)
         {
             int idle = 0;
-            var firing = new bool[game.Line.Length];
-            for (int i = 0; i < game.Line.Length; i++)
+            var firing = new bool[game.ActiveSlots];
+            for (int i = 0; i < game.ActiveSlots; i++)
             {
                 var c = game.Line[i];
                 if (c == null) continue;
@@ -677,7 +688,7 @@ namespace Titan.Game
             if (idle >= 4 && !Settings.ReducedFx) border.a = 0.55f + 0.45f * Mathf.Sin(Time.time * Mathf.PI * 2f * 4f);
             float size = 28 * s, edge = Mathf.Max(1f, 3 * s);
             var zzz = new GUIStyle(small) { fontSize = Mathf.RoundToInt(11 * s) };
-            for (int i = 0; i < game.Line.Length; i++)
+            for (int i = 0; i < game.ActiveSlots; i++)
             {
                 var at = view.SlotPip(i);
                 if (!at.HasValue) continue;

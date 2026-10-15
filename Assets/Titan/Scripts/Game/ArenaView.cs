@@ -93,6 +93,9 @@ namespace Titan.Game
 
         /// <summary>The "pachet gol" ring shown on a tray slot the empty deck could not refill.</summary>
         Transform[] emptyRings;
+        /// <summary>The 6th firing slot ("+1 Loc", ADS-2): a pad with a gold trim at x = 7.2, open until the titan falls.</summary>
+        Transform extraPad;
+        float extraPadScale = 1f;
 
         sealed class CannonView
         {
@@ -162,12 +165,18 @@ namespace Titan.Game
             // Until the first titan fits the camera (the launch overlay shows over an empty arena).
             cam.transform.SetPositionAndRotation(new Vector3(0f, 12f, -22f), Quaternion.Euler(20f, 0f, 0f));
 
-            int slots = config.LineSlots;
+            // LineSlots pads plus the "+1 Loc" one at SlotX(LineSlots) = 7.2 (hidden until granted; nobody moves).
+            int slots = config.LineSlots + 1;
             slotPos = new Vector3[slots];
             line = new CannonView[slots];
             for (int s = 0; s < slots; s++)
             {
                 slotPos[s] = new Vector3(config.SlotX(s), WallTop, -0.5f);
+                if (s == config.LineSlots)
+                {
+                    extraPad = BuildExtraPad(slotPos[s]);
+                    continue;
+                }
                 var pad = Primitive(PrimitiveType.Cylinder, "SlotPad", transform, metalMat, false);
                 pad.position = slotPos[s] + Vector3.up * 0.02f;
                 pad.localScale = new Vector3(1.6f, 0.03f, 1.6f);
@@ -214,6 +223,25 @@ namespace Titan.Game
             poseFrozen = false;
             firstSpawnOfRun = true;
             foreach (var ring in emptyRings) ring.gameObject.SetActive(false);
+            extraPad.gameObject.SetActive(false);
+            extraPad.localScale = Vector3.one * extraPadScale;
+        }
+
+        /// <summary>The 6th pad at x = 7.2 (on the wall, which spans x = -12..12): a slot pad on a gold trim ring.</summary>
+        Transform BuildExtraPad(Vector3 at)
+        {
+            var root = new GameObject("ExtraSlotPad").transform;
+            root.SetParent(transform, false);
+            root.position = at;
+            var gold = MakeMaterial(new Color(1f, 0.78f, 0.15f));
+            var trim = Primitive(PrimitiveType.Cylinder, "GoldTrim", root, gold, false);
+            trim.localPosition = Vector3.up * 0.015f;
+            trim.localScale = new Vector3(1.9f, 0.025f, 1.9f);
+            var pad = Primitive(PrimitiveType.Cylinder, "SlotPad", root, metalMat, false);
+            pad.localPosition = Vector3.up * 0.03f;
+            pad.localScale = new Vector3(1.6f, 0.03f, 1.6f);
+            root.gameObject.SetActive(false);
+            return root;
         }
 
         /// <summary>A dark ring of 16 blocks lying on a tray pad.</summary>
@@ -272,6 +300,8 @@ namespace Titan.Game
                 trayPos[0] + new Vector3(-1.3f, 0, -1.3f), trayPos[trayPos.Length - 1] + new Vector3(1.3f, 0, -1.3f),
                 new Vector3(-halfW, top, far), new Vector3(halfW, top, far),
                 new Vector3(-halfW, top, 0.5f), new Vector3(halfW, top, 0.5f),
+                // The right edge is the "+1 Loc" slot at x = 7.2 (+ margin), even while it is closed, so the camera
+                // never moves when it opens (ADS-2).
                 slotPos[0] + Vector3.left * 1.2f, slotPos[slotPos.Length - 1] + Vector3.right * 1.2f,
             };
             var target = new Vector3(0, top * 0.35f, far * 0.3f);
@@ -398,6 +428,44 @@ namespace Titan.Game
 
         // ---------------------------------------------------------------- input and labels
 
+        /// <summary>GUI-space (y down) tray hit circles: the same centers and radius as <see cref="TrayAtScreen"/>.</summary>
+        bool CircleHitsRect(Vector2 guiCenter, float radius, Rect r)
+        {
+            float cx = Mathf.Clamp(guiCenter.x, r.xMin, r.xMax), cy = Mathf.Clamp(guiCenter.y, r.yMin, r.yMax);
+            return (new Vector2(cx, cy) - guiCenter).sqrMagnitude < radius * radius;
+        }
+
+        /// <summary>True when a GUI rect overlaps any tray hit area (the "+1 LOC" button must never do that).</summary>
+        public bool OverlapsTray(Rect guiRect)
+        {
+            float radius = Screen.height * 0.09f;
+            for (int i = 0; i < trayPos.Length; i++)
+            {
+                var p = cam.WorldToScreenPoint(trayPos[i] + Vector3.up * 0.7f);
+                if (p.z > 0 && CircleHitsRect(new Vector2(p.x, Screen.height - p.y), radius, guiRect)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Where the gold "+1 LOC" button goes (GUI rect, y down): on the wall, right of slot 5, above the wall line
+        /// (the half of the wall area away from the tray), clamped inside the safe area; moved up if it would touch a
+        /// tray hit area. Needs an editor check at 9:19.5 and 9:16 (DESIGN.md 10.2 B).
+        /// </summary>
+        public Rect WallButtonRect(float size)
+        {
+            var safe = Screen.safeArea;
+            var slot = cam.WorldToScreenPoint(slotPos[config.LineSlots]);
+            var wallTop = cam.WorldToScreenPoint(new Vector3(slotPos[config.LineSlots].x, WallTop, -0.5f));
+            float x = slot.x + size * 0.15f;
+            float y = (Screen.height - wallTop.y) - size * 1.9f; // GUI y of the wall line, then up
+            var r = new Rect(x, y, size, size);
+            r.x = Mathf.Clamp(r.x, safe.xMin + 4f, safe.xMax - size - 4f);
+            r.y = Mathf.Clamp(r.y, Screen.height - safe.yMax + 4f, Screen.height - safe.yMin - size - 4f);
+            for (int k = 0; k < 20 && OverlapsTray(r); k++) r.y -= size * 0.25f;
+            return r;
+        }
+
         public int TrayAtScreen(Vector2 screen)
         {
             int best = -1;
@@ -494,14 +562,65 @@ namespace Titan.Game
                     break;
                 case EventKind.CannonEmpty: StartCoroutine(RetireCannon(e.Slot)); break;
                 case EventKind.Step: StepTo(e.Distance); break;
+                case EventKind.SlotAdded: StartCoroutine(UnfoldExtraPad()); break;
+                case EventKind.Revived: Revived(e); break;
                 case EventKind.TitanDefeated: Defeated(e); break;
                 case EventKind.GameOver: StartCoroutine(GameOver(e.Reason)); break;
             }
         }
 
+        /// <summary>The 6th pad unfolds from the wall in 0.3 s (scale 0 → 1.15 → 1).</summary>
+        IEnumerator UnfoldExtraPad()
+        {
+            extraPad.gameObject.SetActive(true);
+            extraPad.localScale = Vector3.zero;
+            yield return StartCoroutine(PopIn(extraPad, extraPadScale, 0.3f));
+        }
+
+        /// <summary>The 6th pad folds away when the next titan comes (its cannon leaves with the others).</summary>
+        IEnumerator FoldExtraPad()
+        {
+            float time = 0f;
+            while (time < 0.3f && extraPad.gameObject.activeSelf)
+            {
+                time += Time.deltaTime;
+                extraPad.localScale = Vector3.one * extraPadScale * (1f - Mathf.Clamp01(time / 0.3f));
+                yield return null;
+            }
+            extraPad.gameObject.SetActive(false);
+            extraPad.localScale = Vector3.one * extraPadScale;
+        }
+
+        /// <summary>
+        /// "A doua suflare": the titan stumbles back (0.5 s ease-out with the back-lean) and the sleeping cannons fly
+        /// from the wall to the tray and vanish into the deck.
+        /// </summary>
+        void Revived(GameEvent e)
+        {
+            poseFrozen = false;
+            MoveTitanTo(e.Distance, 0.5f, true);
+            fx.Roar();
+            fx.Shake(0.2f, 0.4f);
+            for (int s = 0; s < line.Length; s++)
+            {
+                if (line[s] == null || game.Line[s] != null) continue;
+                StartCoroutine(FlyIntoDeck(line[s].Root, 0.15f * s));
+                line[s] = null;
+            }
+        }
+
+        IEnumerator FlyIntoDeck(Transform t, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            if (t == null) yield break;
+            yield return StartCoroutine(Move(t, new Vector3(0f, 0.6f, TrayZ - 1.5f), 0.45f, 3f, TrayScale));
+            if (t != null) yield return StartCoroutine(ShrinkAway(t, 0.2f));
+        }
+
         void SpawnTitan(int level, TitanRole role)
         {
             if (monsterRoot != null) Destroy(monsterRoot.gameObject, 1.5f);
+            if (extraPad.gameObject.activeSelf) StartCoroutine(FoldExtraPad());
             cubes.Clear();
             for (int s = 0; s < line.Length; s++)
             {
