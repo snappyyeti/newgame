@@ -6,9 +6,10 @@ Acesta este **pasul 1 din MVP (prototipul gri)** plus miezul regizorului de grup
 
 ## Cum îl deschizi
 
-1. Unity Hub → **Add project from disk** → folderul repo-ului. Versiunea fixată e Unity `6000.6.3f1`; merge și orice Unity 6 (6000.x).
-2. Deschide `Assets/Scenes/Main.unity` și apasă **Play**. Scena e goală intenționat: `GameController` construiește arena din primitive la pornire, deci jocul pornește din orice scenă.
-3. În Game view alege o rezoluție portret (de exemplu 1080×2340).
+1. Pe GitHub: **Code → Download ZIP**, apoi dezarhivezi într-un folder nou.
+2. Unity Hub → **Add** → **Add project from disk** → folderul dezarhivat. Versiunea fixată e Unity `6000.6.3f1`; merge și orice Unity 6 (6000.x).
+3. La prima deschidere, `Assets/HumanCannon/Editor/ProjectSetup.cs` pregătește singur proiectul: deschide scena `Main`, setează portret, fereastră 540×1170 pe Windows și Direct3D 11. Dacă Unity rulează pe Direct3D 12, te întreabă o dată dacă repornește. Spune **Repornește**: pe unele plăci video, Direct3D 12 desenează interfața editorului în roz.
+4. În **Game** alege o rezoluție portret (de exemplu 1080×2340) și apasă **Play**. Scena e goală intenționat: `GameController` construiește arena din primitive la pornire, deci jocul pornește din orice scenă.
 
 Control: click/atingere pe un piedestal = tragi; click pe platforma galbenă din dreapta = rezervă.
 
@@ -73,6 +74,7 @@ dotnet test Tools/CoreTests
 ```
 Assets/HumanCannon/Scripts/Core   logica pură (fără UnityEngine): reguli, scor, regizor, reguli ascunse, config
 Assets/HumanCannon/Scripts/Game   Unity: arena din primitive, animații, input, HUD, servicii (reclame simulate, analytics, salvare)
+Assets/HumanCannon/Editor         pregătirea automată a proiectului în editor
 Assets/HumanCannon/Tests/Editor   teste NUnit (EditMode)
 Tools/CoreTests                   proiect dotnet care rulează testele în afara Unity
 ```
