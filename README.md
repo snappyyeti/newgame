@@ -15,13 +15,13 @@ Control: atingi / dai click pe un tun de jos.
 
 1. **Titanul și ciclurile.** Titanul pășește spre zid; bara de sus arată cât de aproape e. Titanii vin în **cicluri de câte 5**: încălzire, construcție, împingere, **TITAN RAPID!** (un titan mic, eliberarea dinaintea vârfului) și **TITAN GIGANT!** (vârful ciclului, bonus ×2). Sus scrie „Ciclul c · Titanul #n”, cu 5 puncte (al 5-lea e o coroană) care se umplu pe măsură ce dobori titanii ciclului. Vezi tabelul de mai jos.
 2. **Tunurile (tava-bandă).** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când trimiți unul, un tun nou urcă imediat în locul lui. Tava nu primește niciodată 3 tunuri de aceeași culoare dacă mai există alte culori în pachet. Când pachetul titanului s-a golit, locul rămâne gol, cu un cerc închis și „pachet gol”.
-3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri**. Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul. Pe fața zidului, 5 pătrățele arată locurile: gol = doar contur, trage = culoarea tunului cu simbolul ei, așteaptă = gri cu „zzz”. Chenarul lor e alb, chihlimbar când 3 tunuri așteaptă, roșu pulsând la 4 sau mai multe.
+3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri** (un al 6-lea doar cu „+1 Loc”, vezi Reclamele). Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul. Pe fața zidului, 5 pătrățele arată locurile: gol = doar contur, trage = culoarea tunului cu simbolul ei, așteaptă = gri cu „zzz”. Chenarul lor e alb, chihlimbar când 3 tunuri așteaptă, roșu pulsând la 4 sau mai multe.
 4. **Așteptarea și Recuperarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui. „zzz” înseamnă mereu că mai există cuburi de culoarea lui, ascunse în spate; câte culori sunt doar ascunse arată cipul „N culori ascunse ?” de sub bară. Când cade o bucată, muniția care nu mai are ce lovi pleacă odată cu ea: un tun de pe zid a cărui culoare a dispărut de tot zboară de pe zid cu **„RECUPERAT +puncte”**; din tunurile din tavă se scade muniția în plus (un „-N” zboară din bucată spre tun și numărul scade sub ochii tăi; un tun ajuns la 0 dispare și urcă altul în locul lui); din pachet se scade pe nevăzute. Pe zid nu rămâne niciodată un tun mort.
 5. **Tăieturile (combo).** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul sunt **încheieturile**: au culoarea lor și o dungă albă („cusătura”). Brațele și capul nu cad singure: tunul de culoarea brațului îl „mănâncă” de la mână spre umăr, fără să-l rupă. Bucata se rupe doar când distrugi încheietura (sau corpul de sub ea), cade cu fizică și toate cuburile din ea îți dau puncte. Mâna are culoarea brațului (o recunoști după rama închisă). Eticheta galbenă **TAIE!** apare deasupra unui tun din tavă doar dacă muniția **lui**, trimis acum, ajunge să rupă o bucată (jocul simulează țintirea pe o copie a titanului, deci eticheta nu minte). Dacă tunul singur nu ajunge, dar mai ai pe zid sau în tavă alt tun de aceeași culoare, apare un contur gol „taie în N” (N = câte lovituri de culoarea asta mai trebuie). Cât timp brațul sau capul mai are cel puțin 80% din cuburile lui, cusătura încheieturii e **aurie**: tăiat acum, iese o **tăietură curată** (vezi scorul).
 6. **Tăietura cumpără timp.** Fiecare bucată căzută împinge titanul înapoi cu 0,03 × cuburile ei (între 0,3 și 1,5 unități, niciodată mai departe de unde a pornit) și îi întârzie pasul următor cu 0,5 + 0,01 × cuburi secunde (cel mult 1 s). Titanul se clatină înapoi. Bucata care îl doboară de tot nu-l mai împinge.
 7. **„La mustață”.** Dacă dobori titanul când mai are sub 15% din drum până la zid, bonusul de doborâre se înmulțește cu 1,5: **„LA MUSTAȚĂ! x1.5”**. Când titanul a trecut de 75% din drum, marginea ecranului pulsează roșu și se aude o bătaie de inimă.
 8. **Paza ultimului loc.** Jocul refuză atingerea care ar pune pe ultimul loc liber un tun fără țintă, când niciun tun de pe zid nu trage (ai fi pierdut pe loc). Tunul se scutură și scrie **„Ar bloca ultimul loc! Alege o culoare vizibilă.”** O atingere refuzată nu deschide niciodată nimic altceva.
-9. **Pierzi** când titanul atinge zidul, când toate cele 5 locuri sunt pline cu tunuri care n-au în ce trage, sau la **„BLOCAT!”**: niciun tun de pe zid nu are țintă și nu ai nicio mutare utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu o culoare vizibilă) timp de 1,5 s.
+9. **Pierzi** când titanul atinge zidul, când toate locurile (5, sau 6 cu „+1 Loc”) sunt pline cu tunuri care n-au în ce trage, sau la **„BLOCAT!”**: niciun tun de pe zid nu are țintă și nu ai nicio mutare utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu o culoare vizibilă) timp de 1,5 s.
 
 ### Scorul (un singur model de multiplicatori)
 
@@ -43,6 +43,17 @@ Fiecare titan doborât primește până la 3 stele: **Doborât**; **Decapitare**
 - **La final:** motivul, scorul, „RECORD NOU!” sau „Ai fost la X% din record!” (doar de la 85% în sus) sau „Record: N”, apoi „Titani · Stele · Bucăți rupte”, cea mai bună tăietură, combo-ul maxim și un singur obiectiv următor („Încă un titan până la punctul de salvare #n”, altfel „Cel mai departe: titanul #n”). Butoane: **Joacă din nou** (de unde ai pornit runda; de la titanul 1 cu un titan nou), **Reia ciclul (titanul #n)** (doar dacă ai un punct de salvare; scorul revine la cel din momentul salvării) și **Joc nou** (de la titanul 1; punctul de salvare se șterge). Repornirea refolosește arena, deci e aproape instantă.
 - **La pornire**, după cel puțin 3 runde și cu un punct de salvare: „Continuă (titanul #n)” sau „Joc nou”. Altfel jocul pornește direct.
 - **Profilul** se salvează în `titan_profile.json` (în `Application.persistentDataPath`), cu o copie în PlayerPrefs: recordul, cel mai departe titan, rundele, timpul jucat, punctul de salvare, setările și un jurnal local de 300 de evenimente de joc (fără date despre telefon). În editor, **F9** (pe telefon: atingere cu 3 degete pe scor) copiază jurnalul în clipboard: „Jurnal copiat”.
+
+### Reclamele (simulate deocamdată)
+
+Reclamele sunt **simulate**: un ecran „RECLAMĂ SIMULATĂ — Înlocuitor pentru LevelPlay” (6 s cu recompensă, 4 s între runde). Nu e nicio rețea de reclame și niciun pachet nou; LevelPlay vine mai târziu, separat. Toate regulile sunt în `docs/DESIGN.md`, secțiunile 10 și 10.5. Pe scurt:
+
+- **Nimic înainte de 3 runde și 10 minute de joc**, nimic în Titanul Zilei oficial (când va exista), niciun banner. În timpul rundei nu pornește nicio reclamă: singura ofertă e butonul „+1 Loc”, pe care îl apeși doar dacă vrei.
+- **„A doua suflare”** (o dată pe rundă): când pierzi după ce ai doborât un titan sau ai distrus ≥ 15% din cel curent, după 0,6 s apare cardul „A DOUA SUFLARE” în locul ecranului de final (titanul, cât la sută e distrus, scorul). Dacă accepți: tunurile adormite de pe zid se întorc în pachet, titanul dă înapoi un sfert din drum și stă 2 s, iar dacă niciun tun din tavă nu are culoare vizibilă, tava se reface din culori vizibile. Toate stricăciunile titanului rămân. Prima dată în viață e gratis („Revino gratis”). Dacă refuzi, mergi la rezultate și **nu urmează nicio reclamă**.
+- **„+1 Loc”**: un buton auriu „+1 LOC” apare pe zid (dreapta, sus) când ai cel puțin 4 tunuri pe zid și 3 dintre ele așteaptă, 1 s la rând. Îl apeși tu; jocul se oprește și vezi cardul. Primești un al 6-lea loc (cu margine aurie) până dobori titanul. O dată pe titan, de cel mult 2 ori pe rundă, din titanul 2; prima dată e gratis. După un refuz butonul dispare 20 s; după două, nu mai apare nici pe titanul următor. **O atingere pe tavă nu deschide niciodată o ofertă.**
+- **Între runde** (doar când apeși „Joacă din nou”, „Reia ciclul” sau „Joc nou”): uneori o reclamă, și atunci sub butoane scrie dinainte „Reclamă înainte de rundă”. Niciodată la primul final din sesiune, în prima sesiune, după un refuz al revenirii, după un record nou sau un titan nou, după o rundă sub 45 s; cel mult o dată la 4 minute (presetarea „light”), cel mult 5 pe sesiune și 15 pe zi.
+- **„Fără reclame 30 min”** (pe ecranul de rezultate): o reclamă acum = 30 de minute fără reclame între runde (cel mult 4 pe zi). Cât ține, scrie „Fără reclame încă mm:ss”. Reclamele opționale rămân la alegerea ta.
+- Cât timp un card sau o reclamă e pe ecran, jocul stă pe loc (fără sunet, arena întunecată). În editor, **F10** face ca toate reclamele simulate să eșueze (pentru test: nimic nu trebuie să rămână blocat).
 
 ### Alegeri făcute pentru prototip
 
@@ -86,6 +97,8 @@ dotnet run -c Release --project Tools/Sim -- --games 300 --preset v2 --set Appro
 
 Presetul `current` e `TitanConfig` așa cum e acum; `v2` e tabelul din `docs/DESIGN.md` 4.3 (azi identic cu `current`: valorile v2 sunt cele implicite din cod). `--set Cheie=Valoare` schimbă orice câmp din `TitanConfig`.
 
+`--revive` măsoară doar cât valorează „A doua suflare” (o revenire la prima pierdere, cu împingerile 0,25 / 0,40 / 0,60); nu e o rulare de echilibru, iar fără acest flag ajutoarele sunt mereu oprite.
+
 Raportul are metricile din `docs/DESIGN.md`, secțiunea 12.1 (titani doborâți, durata rundei, de ce se pierde, timpi per titan, decizii, bucăți, tunuri moarte) și raportul Smart : Random. Țintele și cifrele de azi sunt în `docs/DESIGN.md` (secțiunile 3 și 12.1), nu aici, ca să nu rămână vechi.
 
 ## Teste
@@ -102,7 +115,9 @@ Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tool
 
 ```
 Assets/Titan/Scripts/Core   logica pură: titanul din voxeli, rupturile, tunurile, linia de tragere, simularea
+Assets/Titan/Scripts/Core/Ads  regulile reclamelor (guvernatorul, pauza de reclame, cohortele), fără Unity
 Assets/Titan/Scripts/Game   Unity: arena, titanul, tunurile, proiectilele, bucățile cu fizică, sunete, HUD
+Assets/Titan/Scripts/Game/Ads  reclama simulată (înlocuitor LevelPlay), cardurile, contractul de pauză
 Assets/Titan/Editor         pregătirea automată a proiectului în editor
 Tools/CoreTests             testele NUnit ale logicii și testul de echilibru, rulate cu dotnet
 Tools/Sim                   simulatorul de echilibru (roboți care joacă nucleul real)
