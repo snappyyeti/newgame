@@ -6,9 +6,7 @@ Puzzle de sortare: tragi colaci cu înotători colorați în 12 piscine, iar sti
 
 1. Pe GitHub: **Code → Download ZIP**, apoi dezarhivezi într-un folder **nou**. Nu peste un proiect vechi.
 2. Unity Hub → **Add** → **Add project from disk** → folderul dezarhivat → Unity `6000.6.3f1` (merge orice Unity 6).
-3. La prima deschidere:
-   - Dacă Unity întreabă de **Input System** („enable the new backends?”), apasă **Yes**. Unity repornește.
-   - Scriptul `Assets/SplashSort/Editor/ProjectSetup.cs` deschide scena `Main`, setează portret și Direct3D 11. Dacă te întreabă dacă repornește, apasă **Repornește**.
+3. La prima deschidere, scriptul `Assets/SplashSort/Editor/ProjectSetup.cs` deschide scena `Main`, setează portret, Direct3D 11 și input-ul clasic (Input Manager). Dacă te întreabă dacă repornește, apasă **Repornește**.
 4. În **Game** alege o rezoluție portret (de exemplu 1080×2340) și apasă **Play**.
 
 Control: apeși pe un colac de jos, îl tragi peste o piscină goală (se face verde) și dai drumul.
@@ -59,7 +57,7 @@ Cascadele sunt rare: sub 2% din SPLASH-uri continuă cu un al doilea pas. De urm
 dotnet test Tools/CoreTests
 ```
 
-În Unity, aceleași teste apar în **Window → General → Test Runner → EditMode**.
+Ca să le rulezi și din Unity, instalează **Test Framework** din Package Manager. Apoi apar în **Window → General → Test Runner → EditMode**. Pachetul nu e inclus din start, ca proiectul să se deschidă fără erori pe orice Unity 6.
 
 ## Structură
 

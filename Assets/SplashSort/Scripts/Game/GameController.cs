@@ -185,32 +185,14 @@ namespace SplashSort.Game
 
         // ---------------------------------------------------------------- input
 
-        /// <summary>Pointer for drag and drop: first touch on phones, left mouse button on desktop.</summary>
+#if !ENABLE_LEGACY_INPUT_MANAGER
+        static bool warnedNoInput;
+#endif
+
+        /// <summary>Pointer for drag and drop: first touch on phones, left mouse button on desktop (classic Input Manager).</summary>
         static bool GetPointer(out bool down, out bool held, out bool up, out Vector2 position)
         {
-#if SPLASH_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
-            var touch = UnityEngine.InputSystem.Touchscreen.current;
-            if (touch != null && (touch.primaryTouch.press.isPressed || touch.primaryTouch.press.wasReleasedThisFrame))
-            {
-                down = touch.primaryTouch.press.wasPressedThisFrame;
-                held = touch.primaryTouch.press.isPressed;
-                up = touch.primaryTouch.press.wasReleasedThisFrame;
-                position = touch.primaryTouch.position.ReadValue();
-                return true;
-            }
-            var mouse = UnityEngine.InputSystem.Mouse.current;
-            if (mouse != null)
-            {
-                down = mouse.leftButton.wasPressedThisFrame;
-                held = mouse.leftButton.isPressed;
-                up = mouse.leftButton.wasReleasedThisFrame;
-                position = mouse.position.ReadValue();
-                return true;
-            }
-            down = held = up = false;
-            position = default;
-            return false;
-#elif ENABLE_LEGACY_INPUT_MANAGER
+#if ENABLE_LEGACY_INPUT_MANAGER
             if (Input.touchCount > 0)
             {
                 var t = Input.GetTouch(0);
@@ -226,6 +208,11 @@ namespace SplashSort.Game
             position = Input.mousePosition;
             return true;
 #else
+            if (!warnedNoInput)
+            {
+                warnedNoInput = true;
+                Debug.LogError("[Splash Sort] Input Manager este oprit. Edit > Project Settings > Player > Active Input Handling: alege \"Input Manager (Old)\" sau \"Both\" și repornește Unity.");
+            }
             down = held = up = false;
             position = default;
             return false;
