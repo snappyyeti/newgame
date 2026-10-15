@@ -23,6 +23,13 @@ Control: atingi / dai click pe un tun de jos.
 8. **Paza ultimului loc.** Jocul refuză atingerea care ar pune pe ultimul loc liber un tun fără țintă, când niciun tun de pe zid nu trage (ai fi pierdut pe loc). Tunul se scutură și scrie **„Ar bloca ultimul loc! Alege o culoare vizibilă.”** O atingere refuzată nu deschide niciodată nimic altceva.
 9. **Pierzi** când titanul atinge zidul, când toate locurile (5, sau 6 cu „+1 Loc”) sunt pline cu tunuri care n-au în ce trage, sau la **„BLOCAT!”**: niciun tun de pe zid nu are țintă și nu ai nicio mutare utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu o culoare vizibilă) timp de 1,5 s.
 
+### Primele runde (tutorialul)
+
+- La primele **3 runde** aplicația intră direct în joc (fără meniu), iar **titanul 1 e unul pregătit**: picioare, umeri, gât și ochi galbeni, trunchi roșu, brațe și cap albastre. Primul tun din tavă (stânga) e **galben** și are exact câtă muniție îi trebuie ca să taie gâtul și ambii umeri: o atingere și, în ~2 s, cad capul și ambele brațe. Celelalte două tunuri vin normal din pachet, iar muniția totală rămâne egală cu cuburile.
+- **Titanul 1 nu pășește până la prima ta atingere.** Titanii 2+ sunt cei obișnuiți.
+- **4 indicii**, câte una odată, fiecare o singură dată pe telefon, fără să blocheze nimic și fără să acopere tava: „Atinge tunul galben” (inel în jurul tunului, până îl atingi); „zzz = culoarea e ascunsă în spate. Va trage când apare.” (prima dată când un tun de pe zid așteaptă 1 s; 2,5 s); „Nu umple toate cele 5 locuri!” (o săgeată spre pătrățelele locurilor, prima dată când 3 tunuri așteaptă; 2,5 s); la primul final de rundă, pe ecranul de rezultate, cauza într-un rând și „Sfat: lasă mereu 1-2 locuri libere.”
+- Nicio reclamă și nicio ofertă de reclamă înainte de 3 runde **și** 10 minute de joc.
+
 ### Scorul (un singur model de multiplicatori)
 
 - **10** puncte pe cub lovit.
@@ -41,14 +48,23 @@ Fiecare titan doborât primește până la 3 stele: **Doborât**; **Decapitare**
 - În rundă, de la 80% din record: **„Record în N”** auriu sub scor, iar scorul pulsează (static cu „Efecte reduse”). Când îl depășești: **„RECORD NOU!”**, fanfară și confetti, o singură dată pe rundă. La un titan la care n-ai ajuns niciodată: **„TITAN NOU: #n”**.
 - **Puncte de salvare gratuite** (niciodată cu reclame): când ajungi la titanul 6, 11, 16, … apare „Punct de salvare: titanul #n”. Fiecare rundă are o sămânță, deci titanul n are aceeași formă când îl reiei (același titan; tunurile depind de cum joci).
 - **La final:** motivul, scorul, „RECORD NOU!” sau „Ai fost la X% din record!” (doar de la 85% în sus) sau „Record: N”, apoi „Titani · Stele · Bucăți rupte”, cea mai bună tăietură, combo-ul maxim și un singur obiectiv următor („Încă un titan până la punctul de salvare #n”, altfel „Cel mai departe: titanul #n”). Butoane: **Joacă din nou** (de unde ai pornit runda; de la titanul 1 cu un titan nou), **Reia ciclul (titanul #n)** (doar dacă ai un punct de salvare; scorul revine la cel din momentul salvării) și **Joc nou** (de la titanul 1; punctul de salvare se șterge). Repornirea refolosește arena, deci e aproape instantă.
-- **La pornire**, după cel puțin 3 runde și cu un punct de salvare: „Continuă (titanul #n)” sau „Joc nou”. Altfel jocul pornește direct.
+- **La pornire**, după cel puțin 3 runde, apare meniul dacă ai un punct de salvare, dacă n-ai terminat încă Titanul Zilei de azi sau dacă ai un mesaj despre serie: „Continuă (titanul #n)” (dacă ai punct de salvare), „Joc nou” / „Joacă” și „Titanul Zilei”. Altfel jocul pornește direct.
 - **Profilul** se salvează în `titan_profile.json` (în `Application.persistentDataPath`), cu o copie în PlayerPrefs: recordul, cel mai departe titan, rundele, timpul jucat, punctul de salvare, setările și un jurnal local de 300 de evenimente de joc (fără date despre telefon). În editor, **F9** (pe telefon: atingere cu 3 degete pe scor) copiază jurnalul în clipboard: „Jurnal copiat”.
+
+### Titanul Zilei și seria
+
+- **Titanul Zilei**: în fiecare zi (după ceasul telefonului) toți primesc aceiași **3 titani** (nivelurile 3, 4 și un titan gigant 5, cu ritmul titanilor 6–8). Dobori titanul 3 = **ai câștigat** („Completed”). Butonul „Titanul Zilei” e în meniu și pe ecranul de rezultate (după primele 3 runde), cu starea (neîncercat / în curs: k/3 / k/3) și numărătoarea reală până la miezul nopții.
+- **Prima încercare e cea oficială** și începe la **prima atingere**: până atunci titanul stă, iar „Înapoi” nu o consumă. Progresul se salvează după fiecare titan doborât; dacă aplicația se oprește, la pornire alegi „Continuă încercarea oficială” (de la titanul următor, cu scorul de atunci). Se încheie la finalul rundei, cu „Închei” → „Închei încercarea oficială?” sau la miezul nopții. Apoi: **ANTRENAMENT** oricât (se ține doar cel mai bun scor de antrenament al zilei).
+- **Fără reclame și fără ajutoare** în nicio rundă a Titanului Zilei (nici antrenamentul), nici înainte, nici după: „Încercarea de azi e fără ajutoare și fără reclame — aceeași provocare pentru toți.” Rundele zilnice nu schimbă recordul, cel mai departe titan sau punctul de salvare.
+- **Corectitudine:** pentru fiecare zi, jocul verifică dinainte (cu un robot simplu, 40 de încercări, la fel pe orice telefon) că ziua poate fi trecută: dintre 4 variante („sare” 0–3) alege prima în care robotul trece de toți 3 titanii în ≥ 35% din încercări și de primul în ≥ 90%; dacă niciuna nu trece (0,5% din zile), ziua folosește titani mai mici (2, 3, 4).
+- **Panoul zilei**: „Titanul Zilei #ziua”, 3 pătrate (verde = doborât, roșu = titanul pe care s-a terminat, gri = neatins), scorul, timpul (m:ss), bucățile rupte și **„Copiază rezultatul”**, care pune în clipboard 4 rânduri fără nimic despre tablă: „Titanul din Cuburi · Ziua #288”, 🟩🟩🟥, „Scor 41.200 · 2:47 · 9 bucăți rupte” și linkul magazinului (deocamdată un înlocuitor). Apoi „Copiat! Lipește-l unde vrei.”
+- **Seria**: +1 pentru fiecare zi în care termini încercarea oficială (oricum ar ieși). **Scuturi**: primul Titan al Zilei îți dă 1, fiecare a 7-a zi de serie încă 1, cel mult 2; se folosesc singure pentru zilele ratate („Un scut ți-a păstrat seria.”). Fără scuturi destule, seria o ia de la capăt: „Bine ai revenit! Începe o serie nouă azi.” Rămâne „Cea mai lungă serie: N”. Seria apare doar pe panoul zilei și în meniu.
 
 ### Reclamele (simulate deocamdată)
 
 Reclamele sunt **simulate**: un ecran „RECLAMĂ SIMULATĂ — Înlocuitor pentru LevelPlay” (6 s cu recompensă, 4 s între runde). Nu e nicio rețea de reclame și niciun pachet nou; LevelPlay vine mai târziu, separat. Toate regulile sunt în `docs/DESIGN.md`, secțiunile 10 și 10.5. Pe scurt:
 
-- **Nimic înainte de 3 runde și 10 minute de joc**, nimic în Titanul Zilei oficial (când va exista), niciun banner. În timpul rundei nu pornește nicio reclamă: singura ofertă e butonul „+1 Loc”, pe care îl apeși doar dacă vrei.
+- **Nimic înainte de 3 runde și 10 minute de joc**, nimic în Titanul Zilei (nici înainte, nici după, nici la antrenament), niciun banner. În timpul rundei nu pornește nicio reclamă: singura ofertă e butonul „+1 Loc”, pe care îl apeși doar dacă vrei.
 - **„A doua suflare”** (o dată pe rundă): când pierzi după ce ai doborât un titan sau ai distrus ≥ 15% din cel curent, după 0,6 s apare cardul „A DOUA SUFLARE” în locul ecranului de final (titanul, cât la sută e distrus, scorul). Dacă accepți: tunurile adormite de pe zid se întorc în pachet, titanul dă înapoi un sfert din drum și stă 2 s, iar dacă niciun tun din tavă nu are culoare vizibilă, tava se reface din culori vizibile. Toate stricăciunile titanului rămân. Prima dată în viață e gratis („Revino gratis”). Dacă refuzi, mergi la rezultate și **nu urmează nicio reclamă**.
 - **„+1 Loc”**: un buton auriu „+1 LOC” apare pe zid (dreapta, sus) când ai cel puțin 4 tunuri pe zid și 3 dintre ele așteaptă, 1 s la rând. Îl apeși tu; jocul se oprește și vezi cardul. Primești un al 6-lea loc (cu margine aurie) până dobori titanul. O dată pe titan, de cel mult 2 ori pe rundă, din titanul 2; prima dată e gratis. După un refuz butonul dispare 20 s; după două, nu mai apare nici pe titanul următor. **O atingere pe tavă nu deschide niciodată o ofertă.**
 - **Între runde** (doar când apeși „Joacă din nou”, „Reia ciclul” sau „Joc nou”): uneori o reclamă, și atunci sub butoane scrie dinainte „Reclamă înainte de rundă”. Niciodată la primul final din sesiune, în prima sesiune, după un refuz al revenirii, după un record nou sau un titan nou, după o rundă sub 45 s; cel mult o dată la 4 minute (presetarea „light”), cel mult 5 pe sesiune și 15 pe zi.
@@ -97,6 +113,8 @@ dotnet run -c Release --project Tools/Sim -- --games 300 --preset v2 --set Appro
 
 Presetul `current` e `TitanConfig` așa cum e acum; `v2` e tabelul din `docs/DESIGN.md` 4.3 (azi identic cu `current`: valorile v2 sunt cele implicite din cod). `--set Cheie=Valoare` schimbă orice câmp din `TitanConfig`.
 
+`--ftue` pune titanul pregătit al tutorialului la titanul 1 și arată cât de des e doborât și cât durează până cade prima bucată după prima atingere (nu e o rulare de echilibru).
+
 `--revive` măsoară doar cât valorează „A doua suflare” (o revenire la prima pierdere, cu împingerile 0,25 / 0,40 / 0,60); nu e o rulare de echilibru, iar fără acest flag ajutoarele sunt mereu oprite.
 
 Raportul are metricile din `docs/DESIGN.md`, secțiunea 12.1 (titani doborâți, durata rundei, de ce se pierde, timpi per titan, decizii, bucăți, tunuri moarte) și raportul Smart : Random. Țintele și cifrele de azi sunt în `docs/DESIGN.md` (secțiunile 3 și 12.1), nu aici, ca să nu rămână vechi.
@@ -109,7 +127,7 @@ dotnet build Tools/UnityCheck        # verifică că scripturile de joc compilea
 dotnet build Tools/EditorCheck       # verifică scripturile de editor
 ```
 
-Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze. Testul de echilibru (`BalanceTests`) rulează mereu; cu `SKIP_BALANCE=1` e sărit.
+Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze. Testul de echilibru (`BalanceTests`) rulează mereu; cu `SKIP_BALANCE=1` e sărit. Verificarea Titanului Zilei rulează implicit pe fiecare a 10-a zi din zilele 0–730; cu `DAILY_SWEEP=1` le verifică pe toate (~40 s).
 
 ## Structură
 
