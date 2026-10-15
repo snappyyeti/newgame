@@ -99,6 +99,10 @@ namespace Titan.Sim
             if (summaries.TryGetValue(BotKind.Random, out var r) && summaries.TryGetValue(BotKind.Smart, out var sm) && r.DefeatedMean > 0)
                 Console.WriteLine("Smart:Random mean titans defeated = " + (sm.DefeatedMean / r.DefeatedMean).ToString("F2", CultureInfo.InvariantCulture)
                     + "x  (" + sm.DefeatedMean.ToString("F2", CultureInfo.InvariantCulture) + " / " + r.DefeatedMean.ToString("F2", CultureInfo.InvariantCulture) + "; target 1.7-2.3x)");
+            if (summaries.TryGetValue(BotKind.Random, out var r2) && summaries.TryGetValue(BotKind.Smart, out var sm2) && r2.CleanCutsPerTitan > 0)
+                Console.WriteLine("Smart:Random clean cuts per titan = " + (sm2.CleanCutsPerTitan / r2.CleanCutsPerTitan).ToString("F2", CultureInfo.InvariantCulture)
+                    + "x  (" + sm2.CleanCutsPerTitan.ToString("F2", CultureInfo.InvariantCulture) + " / " + r2.CleanCutsPerTitan.ToString("F2", CultureInfo.InvariantCulture)
+                    + "; target >= 1.5x); Smart s3 'linie curata' " + (100 * sm2.StarCleanLineRate).ToString("F0", CultureInfo.InvariantCulture) + "% (target 25-40%)");
             return 0;
         }
 

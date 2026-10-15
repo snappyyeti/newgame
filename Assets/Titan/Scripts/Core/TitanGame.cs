@@ -52,6 +52,17 @@ namespace Titan.Core
 
         public int PointsPerShot = 10;
         public int PointsPerFallenCube = 25;
+
+        // ------------------------------------------------------------ cut scoring and stars (DESIGN.md 6.2-6.3, CORE-5)
+        /// <summary>A piece is clean when it still has at least this fraction of its part's original cubes.</summary>
+        public float CleanCutThreshold = 0.8f;
+        /// <summary>Piece points = cubes × PointsPerFallenCube × (clean ? CleanCutMult : 1) × min(chain, ChainMaxMult).</summary>
+        public int CleanCutMult = 2;
+        /// <summary>Pieces at most this many seconds apart extend the chain ("COMBO ×N").</summary>
+        public float ChainWindowSeconds = 4f;
+        public int ChainMaxMult = 5;
+        /// <summary>Star 3 "Linie curată": never more than this many cannons on the wall during the titan.</summary>
+        public int CleanLineMax = 4;
         public int DefeatBonusPerLevel = 200;
         public int PointsPerLeftoverAmmo = 2;
 
@@ -79,6 +90,9 @@ namespace Titan.Core
 
         /// <summary>"BLOCAT!" (DESIGN.md 4.2.9): nothing fires and no useful tap exists for this long → the run ends.</summary>
         public float DeadlockSeconds = 1.5f;
+
+        /// <summary>X position of firing slot <paramref name="slot"/> (the line is centered on X = 0).</summary>
+        public float SlotX(int slot) => (slot - (LineSlots - 1) / 2f) * SlotSpacing;
 
         public float ApproachSeconds(int titan, int cubes)
         {
@@ -197,6 +211,33 @@ namespace Titan.Core
         public TitanRole Role;
         /// <summary>TitanDefeated: defeated "la mustață" (bonus × NearMissBonusMult).</summary>
         public bool NearMiss;
+        /// <summary>PieceFell: the piece kept ≥ CleanCutThreshold of its part (× CleanCutMult).</summary>
+        public bool Clean;
+        /// <summary>PieceFell: the chain count of this piece (1 = no chain); the multiplier is min(Chain, ChainMaxMult).</summary>
+        public int Chain;
+        /// <summary>PieceFell: the body part of the piece (<see cref="FallenPiece.Part"/>).</summary>
+        public int Part;
+        /// <summary>PieceFell: the total multiplier applied to the piece's cubes (clean × chain).</summary>
+        public int Mult;
+        /// <summary>TitanDefeated: star bitmask (<see cref="Stars"/>).</summary>
+        public int Stars;
+        /// <summary>TitanDefeated: the most cannons that stood on the wall at once during this titan.</summary>
+        public int MaxLine;
+        /// <summary>TitanSpawned: the run score at that moment (what a checkpoint stores).</summary>
+        public int Score;
+    }
+
+    /// <summary>The titan grade (DESIGN.md 6.3): one bit per star. The stars add no multiplier.</summary>
+    public static class Stars
+    {
+        /// <summary>The titan was defeated.</summary>
+        public const int Defeated = 1;
+        /// <summary>"Decapitare": a clean head piece fell during this titan.</summary>
+        public const int Decapitation = 2;
+        /// <summary>"Linie curată": never more than CleanLineMax cannons on the wall during this titan.</summary>
+        public const int CleanLine = 4;
+
+        public static int Count(int mask) => (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1);
     }
 
     /// <summary>
@@ -207,7 +248,9 @@ namespace Titan.Core
     public sealed class TitanGame
     {
         public readonly TitanConfig Config;
-        readonly IRandom rng;
+        /// <summary>The stream every random choice uses. Seeded runs replace it at every spawn (one stream per titan).</summary>
+        IRandom rng;
+        readonly bool seeded;
         readonly List<Cannon> deck = new List<Cannon>();
 
         public Monster Monster { get; private set; }
@@ -227,6 +270,7 @@ namespace Titan.Core
         /// <summary>Optional: titan n comes from here instead of MonsterBuilder when it returns non-null (scripted titans, tests).</summary>
         readonly Func<int, Monster> titanSource;
 
+        /// <summary>One random stream for the whole run (tests, the simulator).</summary>
         public TitanGame(TitanConfig config, IRandom rng, int startLevel = 1, Func<int, Monster> titanSource = null)
         {
             Config = config;
@@ -234,8 +278,77 @@ namespace Titan.Core
             this.titanSource = titanSource;
             Tray = new Cannon[config.TraySize];
             Line = new Cannon[config.LineSlots];
+            StartTitan = startLevel;
             SpawnTitan(startLevel);
         }
+
+        /// <summary>
+        /// A seeded run (DESIGN.md 9.2, RET-1): titan n builds its shape, its deck and every tray draw from
+        /// new SeededRandom(Derive(runSeed, n)), so the same seed gives the same titan n whatever happened before.
+        /// A checkpoint restarts at <paramref name="startTitan"/> with the score it saved.
+        /// </summary>
+        public TitanGame(TitanConfig config, long runSeed, int startTitan = 1, int startScore = 0, Func<int, Monster> titanSource = null)
+        {
+            Config = config;
+            seeded = true;
+            RunSeed = runSeed;
+            this.titanSource = titanSource;
+            Tray = new Cannon[config.TraySize];
+            Line = new Cannon[config.LineSlots];
+            StartTitan = Math.Max(1, startTitan);
+            Score = Math.Max(0, startScore);
+            SpawnTitan(StartTitan);
+        }
+
+        /// <summary>The run seed of a seeded run (0 for a run built on one IRandom).</summary>
+        public long RunSeed { get; }
+        public bool IsSeeded => seeded;
+        /// <summary>The titan this run started at (1, or a checkpoint).</summary>
+        public int StartTitan { get; }
+
+        // ---------------------------------------------------------------- cut scoring state (CORE-5)
+
+        /// <summary>Seconds of simulated play (the sum of every Tick's dt).</summary>
+        public float GameTime { get; private set; }
+        /// <summary>GameTime of the last fallen piece (−∞ before the first piece of a titan).</summary>
+        public float LastPieceTime { get; private set; } = float.NegativeInfinity;
+        /// <summary>The current chain (0 before the first piece of a titan; resets at each spawn).</summary>
+        public int Chain { get; private set; }
+        /// <summary>Seconds left in the chain window, 0 when it is closed.</summary>
+        public float ChainTimeLeft => Chain > 0 ? Math.Max(0f, Config.ChainWindowSeconds - (GameTime - LastPieceTime)) : 0f;
+
+        /// <summary>The most cannons on the wall at once during the current titan (star 3).</summary>
+        public int MaxOccupiedLine { get; private set; }
+        /// <summary>A clean head piece fell during the current titan (star 2).</summary>
+        public bool DecapitatedThisTitan { get; private set; }
+        /// <summary>Star 3 is still possible for the current titan.</summary>
+        public bool CleanLineAlive => MaxOccupiedLine <= Config.CleanLineMax;
+
+        // Run stats.
+        public int MaxPiecePoints { get; private set; }
+        public int MaxChain { get; private set; }
+        public int PiecesCut { get; private set; }
+        /// <summary>Clean head pieces ("DECAPITARE!").</summary>
+        public int HeadsCut { get; private set; }
+        public int CleanCuts { get; private set; }
+        /// <summary>Titans defeated in this run, and the stars they earned.</summary>
+        public int TitansDefeated { get; private set; }
+        public int StarsEarned { get; private set; }
+
+        /// <summary>
+        /// True while cutting this part off now would be clean: it still has ≥ CleanCutThreshold of its cubes and is
+        /// attached (the joint stitch shows a gold rim). Always false for the body, which never falls.
+        /// </summary>
+        public bool IsCleanEligible(int part)
+        {
+            if (part <= Monster.Body) return false;
+            int original = Monster.OriginalPartSize(part);
+            int left = Monster.RemainingPartSize(part);
+            return original > 0 && left > 0 && IsCleanCount(left, original);
+        }
+
+        /// <summary>cubes ≥ CleanCutThreshold × original, with a tolerance so 0.8f × 10 counts 8 cubes as clean.</summary>
+        bool IsCleanCount(int cubes, int original) => original > 0 && cubes >= (double)Config.CleanCutThreshold * original - 1e-3;
 
         /// <summary>Distance covered per step, fixed when the titan spawns.</summary>
         public float StepLength => stepLength;
@@ -245,7 +358,7 @@ namespace Titan.Core
 
         /// <summary>Seconds the current titan needs to reach the wall from its spawn point.</summary>
         public float ApproachSeconds { get; private set; }
-        public float SlotX(int slot) => (slot - (Config.LineSlots - 1) / 2f) * Config.SlotSpacing;
+        public float SlotX(int slot) => Config.SlotX(slot);
         public int DeckCount => deck.Count;
 
         /// <summary>The level the current titan was built at (DESIGN.md 5.1); equals <see cref="Level"/> without cycles.</summary>
@@ -345,6 +458,7 @@ namespace Titan.Core
             cannon.Cooldown = Config.DeployDelay;
             Line[slot] = cannon;
             Events.Add(new GameEvent { Kind = EventKind.Deployed, Slot = slot, TraySlot = traySlot, Color = cannon.Color });
+            TrackLine();
 
             if (Config.TrayRefill == TrayRefill.PerSlot)
             {
@@ -394,6 +508,8 @@ namespace Titan.Core
         public void Tick(float dt)
         {
             if (IsOver) return;
+            GameTime += dt;
+            TrackLine();
 
             // The titan steps toward the wall.
             stepTimer += dt;
@@ -466,15 +582,42 @@ namespace Titan.Core
             cannon.Ammo--;
             Score += Config.PointsPerShot;
             Events.Add(new GameEvent { Kind = EventKind.Shot, Slot = slot, Cube = target, Color = cannon.Color, Points = Config.PointsPerShot });
-            foreach (var piece in pieces)
-            {
-                int points = piece.Count * Config.PointsPerFallenCube;
-                Score += points;
-                Events.Add(new GameEvent { Kind = EventKind.PieceFell, Slot = slot, Piece = piece, Points = points });
-            }
+            foreach (var piece in pieces) ScorePiece(slot, piece);
             if (pieces.Count == 0 || Monster.Count == 0) return; // an empty titan is defeated instead (no knockback, leftover bonus)
             foreach (var piece in pieces) Knockback(piece);
             Salvage();
+        }
+
+        /// <summary>
+        /// The one in-titan multiplier model (DESIGN.md 6.2): cubes × 25 × (clean ? 2 : 1) × min(chain, 5). A piece is
+        /// clean when it kept ≥ 80% of its part's original cubes; pieces ≤ 4 s apart extend the chain (pieces of one
+        /// shot too, in order).
+        /// </summary>
+        void ScorePiece(int slot, FallenPiece piece)
+        {
+            int part = piece.Part;
+            bool clean = part > Monster.Body && IsCleanCount(piece.Count, Monster.OriginalPartSize(part));
+            Chain = GameTime - LastPieceTime <= Config.ChainWindowSeconds + 1e-4f ? Chain + 1 : 1;
+            LastPieceTime = GameTime;
+            int mult = (clean ? Config.CleanCutMult : 1) * Math.Min(Chain, Config.ChainMaxMult);
+            int points = piece.Count * Config.PointsPerFallenCube * mult;
+            Score += points;
+            PiecesCut++;
+            if (clean) CleanCuts++;
+            if (clean && part == Monster.Head)
+            {
+                HeadsCut++;
+                DecapitatedThisTitan = true;
+            }
+            MaxPiecePoints = Math.Max(MaxPiecePoints, points);
+            MaxChain = Math.Max(MaxChain, Chain);
+            Events.Add(new GameEvent { Kind = EventKind.PieceFell, Slot = slot, Piece = piece, Points = points, Clean = clean, Chain = Chain, Part = part, Mult = mult });
+        }
+
+        void TrackLine()
+        {
+            int occupied = Line.Length - FreeSlots;
+            if (occupied > MaxOccupiedLine) MaxOccupiedLine = occupied;
         }
 
         /// <summary>The cut buys time (DESIGN.md 4.2.6): the titan staggers back and its next step comes later.</summary>
@@ -664,8 +807,20 @@ namespace Titan.Core
             foreach (var c in Line) if (c != null) leftover += c.Ammo;
             int bonus = DefeatBonus(Level, Role, out bool nearMiss) + leftover * Config.PointsPerLeftoverAmmo;
             Score += bonus;
-            Events.Add(new GameEvent { Kind = EventKind.TitanDefeated, Level = Level, Points = bonus, Role = Role, NearMiss = nearMiss, Distance = Distance });
+            int stars = TitanStars();
+            TitansDefeated++;
+            StarsEarned += Stars.Count(stars);
+            Events.Add(new GameEvent { Kind = EventKind.TitanDefeated, Level = Level, Points = bonus, Role = Role, NearMiss = nearMiss, Distance = Distance, Stars = stars, MaxLine = MaxOccupiedLine });
             SpawnTitan(Level + 1);
+        }
+
+        /// <summary>The grade of the titan being defeated now (DESIGN.md 6.3): defeated, decapitation, clean line.</summary>
+        int TitanStars()
+        {
+            int stars = Stars.Defeated;
+            if (DecapitatedThisTitan) stars |= Stars.Decapitation;
+            if (MaxOccupiedLine <= Config.CleanLineMax) stars |= Stars.CleanLine;
+            return stars;
         }
 
         /// <summary>Defeat bonus without the leftover ammo: 200 × n × (boss ? 2 : 1) × (la mustață ? 1.5 : 1), rounded.</summary>
@@ -680,6 +835,7 @@ namespace Titan.Core
         void SpawnTitan(int level)
         {
             Level = level;
+            if (seeded) rng = new SeededRandom(SeededRandom.Derive(unchecked((ulong)RunSeed), (ulong)level));
             BuildLevel = Config.BuildLevel(level);
             Role = Config.RoleOf(level);
             int extraColors = Role == TitanRole.Boss && Config.BossExtraColor ? 1 : 0;
@@ -688,11 +844,15 @@ namespace Titan.Core
             Distance = Config.StartDistance;
             stepTimer = 0f;
             stuckTimer = 0f;
+            Chain = 0;
+            LastPieceTime = float.NegativeInfinity;
+            MaxOccupiedLine = 0;
+            DecapitatedThisTitan = false;
             ApproachSeconds = Config.ApproachSeconds(level, Monster.Count);
             stepLength = Config.StartDistance / (ApproachSeconds / Config.StepInterval);
             for (int i = 0; i < Line.Length; i++) Line[i] = null;
             BuildDeck();
-            Events.Add(new GameEvent { Kind = EventKind.TitanSpawned, Level = level, Role = Role });
+            Events.Add(new GameEvent { Kind = EventKind.TitanSpawned, Level = level, Role = Role, Score = Score });
             RefillTray();
         }
 

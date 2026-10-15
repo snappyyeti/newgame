@@ -8,10 +8,8 @@ namespace Titan.Game
     /// Entry point of Titanul din Cuburi. Builds everything at runtime, so Play works from any scene.
     /// Tap a cannon at the bottom to send it to the firing line on the wall; it shoots its color on its own.
     /// </summary>
-    public sealed class GameController : MonoBehaviour
+    public sealed partial class GameController : MonoBehaviour
     {
-        const string BestKey = "titan_best";
-
         static GameController instance;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -21,13 +19,20 @@ namespace Titan.Game
         }
 
         TitanConfig cfg;
-        TitanGame game;
         ArenaView view;
         Fx fx;
         Camera cam;
 
-        int best;
-        bool newBest;
+        // Profile, telemetry and the current run (RET-1). The rules live in Titan.Core (RunSession, ProfileStore).
+        Profile profile;
+        Titan.Core.ProfileStore store;
+        Telemetry telemetry;
+        RunSession session;
+        TitanGame game => session?.Game;
+        /// <summary>App launch with a checkpoint after 3+ runs: "Continuă (titanul #n)" / "Joc nou" before any run.</summary>
+        bool launchOverlay;
+        int seedCounter;
+
         float shownScore;
         float scorePunch;
         int lastScore;
@@ -35,19 +40,33 @@ namespace Titan.Game
 
         string banner;
         Color bannerColor = Color.white;
-        float bannerUntil;
+        float bannerUntil, bannerStart;
+        /// <summary>The defeat banner's stars (−1: a banner without stars) and the line peak behind a missing third star.</summary>
+        int bannerStars = -1, bannerMaxLine, starTicksPlayed;
         /// <summary>Banners from game events wait their turn (a defeat banner and the next titan's banner come in one frame).</summary>
         readonly Queue<BannerItem> bannerQueue = new Queue<BannerItem>();
         readonly List<PopupText> popups = new List<PopupText>();
+        /// <summary>"Punct de salvare: titanul #n" (1.2 s).</summary>
+        string toast;
+        float toastUntil;
 
         /// <summary>Per-frame HUD cache: colors with cubes but none visible (the "? culori ascunse" chip).</summary>
         int hiddenColors;
+
+        // Fast restart and performance telemetry.
+        bool restartPending;
+        float restartFrom;
+        int restartFrame;
+        /// <summary>Frame times of the current run in 1 ms buckets (the last bucket holds everything slower).</summary>
+        readonly int[] frameMs = new int[200];
 
         struct BannerItem
         {
             public string Text;
             public Color Color;
             public float Seconds;
+            public int Stars;
+            public int MaxLine;
         }
 
         sealed class PopupText
@@ -63,7 +82,6 @@ namespace Titan.Game
             Screen.orientation = ScreenOrientation.Portrait;
             Application.targetFrameRate = 60;
             cfg = new TitanConfig();
-            best = PlayerPrefs.GetInt(BestKey, 0);
 
             foreach (var existing in Camera.allCameras) existing.gameObject.SetActive(false);
             cam = new GameObject("Main Camera").AddComponent<Camera>();
@@ -95,48 +113,109 @@ namespace Titan.Game
             fx = gameObject.AddComponent<Fx>();
             fx.Init(cam);
 
-            NewGame();
+            // The profile: file, then the PlayerPrefs mirror, then a new one (which migrates the old best and settings).
+            store = UnityProfileStore.Open();
+            var corrupt = new List<int>();
+            profile = store.Load(corrupt.Add);
+            telemetry = new Telemetry(() => profile);
+            foreach (int source in corrupt) telemetry.Track(Telemetry.SaveCorrupt, source);
+            int today = DayClock.StartSession(profile, System.DateTime.Now, out int daysSinceLast, out _);
+            telemetry.Track(Telemetry.SessionStart, today, daysSinceLast);
+            Settings.Bind(profile.settings, SaveProfile);
+            SaveProfile();
+
+            view = new GameObject("Arena").AddComponent<ArenaView>();
+            view.Build(cfg, cam, fx);
+            view.Popup += (pos, text) => popups.Add(new PopupText { World = pos, Text = text, Born = Time.time });
+            view.PiecePopup += OnPiecePopup;
+            view.Banner += (text, color, seconds) => QueueBanner(text, color, seconds);
+            screenSize = new Vector2Int(Screen.width, Screen.height);
+
+            if (RunSession.ShowLaunchOverlay(profile)) launchOverlay = true;
+            else StartRun(RunStart.Fresh(NewSeed()));
         }
 
-        void NewGame()
+        /// <summary>A new run seed: the clock and a counter, mixed (never shown, never needed again unless a checkpoint keeps it).</summary>
+        long NewSeed() => unchecked((long)SeededRandom.Hash((ulong)System.DateTime.UtcNow.Ticks, (ulong)(++seedCounter)));
+
+        /// <summary>
+        /// Starts a run on the same arena (RET-2 fast restart): the view resets instead of being destroyed and rebuilt.
+        /// For a restart from the game-over panel, the time from the tap to the first rendered frame of the new run is
+        /// logged as restart_ms.
+        /// </summary>
+        void StartRun(RunStart start, bool restart = false)
         {
-            if (view != null) Destroy(view.gameObject);
-            game = new TitanGame(cfg, new SystemRandom());
-            view = new GameObject("Arena").AddComponent<ArenaView>();
-            view.Build(game, cam, fx);
-            view.Popup += (pos, text) => popups.Add(new PopupText { World = pos, Text = text, Born = Time.time });
-            view.Banner += QueueBanner;
-            screenSize = new Vector2Int(Screen.width, Screen.height);
-            shownScore = 0;
-            lastScore = 0;
-            newBest = false;
+            restartFrom = Time.realtimeSinceStartup;
+            restartFrame = Time.frameCount;
+            restartPending = restart;
+            launchOverlay = false;
+
+            session = new RunSession(profile, telemetry, cfg, start);
+            fx.StopRunEffects();
+            view.Reset(session.Game);
+            shownScore = start.Score;
+            lastScore = start.Score;
+            scorePunch = 0f;
             popups.Clear();
+            bigPopup = queuedPopup = null;
             bannerQueue.Clear();
             banner = null;
+            bannerStars = -1;
+            toast = null;
+            confetti.Clear();
+            System.Array.Clear(frameMs, 0, frameMs.Length);
             PlayEvents();
         }
+
+        void SaveProfile()
+        {
+            if (profile != null) store.Save(profile);
+        }
+
+        void OnApplicationPause(bool paused)
+        {
+            if (paused) SaveProfile();
+        }
+
+        void OnApplicationQuit() => SaveProfile();
 
         void Update()
         {
             if (Screen.width != screenSize.x || Screen.height != screenSize.y)
             {
                 screenSize = new Vector2Int(Screen.width, Screen.height);
-                view.Refit();
+                if (game != null) view.Refit();
             }
+            if (restartPending && Time.frameCount > restartFrame + 1)
+            {
+                // The new run has been rendered once (it was built during frame restartFrame, drawn in the next one).
+                restartPending = false;
+                telemetry.Track(Telemetry.RestartMs, Mathf.RoundToInt((Time.realtimeSinceStartup - restartFrom) * 1000f));
+            }
+            CheckLogExport();
+            if (game == null) return;
 
             if (!game.IsOver)
             {
                 if (TryGetTap(out var tap)) HandleTap(tap);
                 game.Tick(Mathf.Min(Time.deltaTime, 0.1f));
                 PlayEvents();
+                frameMs[Mathf.Clamp(Mathf.RoundToInt(Time.unscaledDeltaTime * 1000f), 0, frameMs.Length - 1)]++;
+            }
+            if ((session.Update(Time.unscaledDeltaTime) & SessionSignal.NewRecord) != 0)
+            {
+                ShowBanner("RECORD NOU!", ArenaView.BannerGold, 1.5f);
+                fx.RecordFanfare();
+                Confetti();
             }
             fx.Heartbeat(game.IsOver ? -1f : game.Danger);
             hiddenColors = game.IsOver ? 0 : game.HiddenOnlyColorCount();
             if ((banner == null || Time.time >= bannerUntil) && bannerQueue.Count > 0)
             {
                 var next = bannerQueue.Dequeue();
-                ShowBanner(next.Text, next.Color, next.Seconds);
+                ShowBanner(next.Text, next.Color, next.Seconds, next.Stars, next.MaxLine);
             }
+            StarTicks();
 
             if (game.Score != lastScore)
             {
@@ -145,6 +224,7 @@ namespace Titan.Game
             }
             shownScore = Mathf.MoveTowards(shownScore, game.Score, Mathf.Max(30f, (game.Score - shownScore) * 6f) * Time.deltaTime);
             scorePunch = Mathf.MoveTowards(scorePunch, 0f, Time.deltaTime * 3f);
+            UpdateConfetti(Time.unscaledDeltaTime);
         }
 
         void HandleTap(Vector2 screen)
@@ -170,42 +250,104 @@ namespace Titan.Game
 
         void PlayEvents()
         {
+            var signals = SessionSignal.None;
             foreach (var e in game.Events)
             {
                 view.Play(e);
-                if (e.Kind == EventKind.GameOver) OnGameOver();
+                if (e.Kind == EventKind.TitanDefeated) DefeatBanner(e);
+                var signal = session.Process(e);
+                if ((signal & SessionSignal.NewFurthestTitan) != 0) QueueBanner("TITAN NOU: #" + e.Level, ArenaView.BannerGold, 1.4f);
+                if ((signal & SessionSignal.CheckpointSaved) != 0)
+                {
+                    toast = "Punct de salvare: titanul #" + e.Level;
+                    toastUntil = Time.time + 1.2f;
+                }
+                signals |= signal;
             }
             game.Events.Clear();
+            if ((signals & SessionSignal.RunEnded) != 0) telemetry.Track(Telemetry.Perf, FrameP95(), game.Level);
+            if ((signals & SessionSignal.Save) != 0) SaveProfile();
         }
 
-        void OnGameOver()
+        /// <summary>"TITAN DOBORÂT! +N" (or "LA MUSTAȚĂ!") with the titan's 3 stars popping in under it.</summary>
+        void DefeatBanner(GameEvent e)
         {
-            newBest = game.Score > best;
-            if (newBest)
-            {
-                best = game.Score;
-                PlayerPrefs.SetInt(BestKey, best);
-                PlayerPrefs.Save();
-            }
+            if (e.NearMiss)
+                QueueBanner("LA MUSTAȚĂ!  x" + cfg.NearMissBonusMult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "  +" + HudText.Num(e.Points),
+                    ArenaView.BannerGold, 2.2f, e.Stars, e.MaxLine);
+            else QueueBanner("TITAN DOBORÂT!  +" + HudText.Num(e.Points), ArenaView.BannerWhite, 2.2f, e.Stars, e.MaxLine);
         }
 
-        /// <summary>Shows a banner now, replacing the current one (tap feedback).</summary>
-        void ShowBanner(string text, Color color, float seconds)
+        int FrameP95()
+        {
+            int total = 0;
+            foreach (int n in frameMs) total += n;
+            if (total == 0) return 0;
+            int seen = 0;
+            for (int ms = 0; ms < frameMs.Length; ms++)
+            {
+                seen += frameMs[ms];
+                if (seen >= 0.95f * total) return ms;
+            }
+            return frameMs.Length - 1;
+        }
+
+        /// <summary>Shows a banner now, replacing the current one (tap feedback, the record).</summary>
+        void ShowBanner(string text, Color color, float seconds, int stars = -1, int maxLine = 0)
         {
             banner = text;
             bannerColor = color;
+            bannerStart = Time.time;
             bannerUntil = Time.time + seconds;
+            bannerStars = stars;
+            bannerMaxLine = maxLine;
+            starTicksPlayed = 0;
         }
 
         /// <summary>Game-event banners: shown now if the screen is free, otherwise after the current one (at most 3 waiting).</summary>
-        void QueueBanner(string text, Color color, float seconds)
+        void QueueBanner(string text, Color color, float seconds, int stars = -1, int maxLine = 0)
         {
             if (banner == null || Time.time >= bannerUntil)
             {
-                ShowBanner(text, color, seconds);
+                ShowBanner(text, color, seconds, stars, maxLine);
                 return;
             }
-            if (bannerQueue.Count < 3) bannerQueue.Enqueue(new BannerItem { Text = text, Color = color, Seconds = seconds });
+            if (bannerQueue.Count < 3) bannerQueue.Enqueue(new BannerItem { Text = text, Color = color, Seconds = seconds, Stars = stars, MaxLine = maxLine });
+        }
+
+        const float StarFirst = 0.2f, StarGap = 0.15f;
+
+        /// <summary>One rising tick per star as it pops in (0.15 s apart).</summary>
+        void StarTicks()
+        {
+            if (bannerStars < 0 || banner == null || Time.time >= bannerUntil) return;
+            while (starTicksPlayed < 3 && Time.time - bannerStart >= StarFirst + StarGap * starTicksPlayed)
+            {
+                fx.StarTick(starTicksPlayed, (bannerStars & (1 << starTicksPlayed)) != 0);
+                starTicksPlayed++;
+            }
+        }
+
+        /// <summary>Debug export of the log ring: F9 in the editor, or a 3-finger tap on the score. Copies JSON, says "Jurnal copiat".</summary>
+        void CheckLogExport()
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            bool export = Application.isEditor && Input.GetKeyDown(KeyCode.F9);
+            if (!export && Input.touchCount == 3)
+            {
+                float s = Screen.height / 1000f;
+                float top = Screen.height - Screen.safeArea.yMax;
+                var scoreRect = new Rect(Screen.width * 0.2f, top, Screen.width * 0.6f, 100 * s);
+                for (int i = 0; i < 3; i++)
+                {
+                    var t = Input.GetTouch(i);
+                    if (t.phase == TouchPhase.Began && scoreRect.Contains(new Vector2(t.position.x, Screen.height - t.position.y))) export = true;
+                }
+            }
+            if (!export) return;
+            GUIUtility.systemCopyBuffer = UnityProfileStore.LogJson(profile);
+            ShowBanner("Jurnal copiat", Color.white, 1.2f);
+#endif
         }
 
         static bool TryGetTap(out Vector2 position)
@@ -278,19 +420,39 @@ namespace Titan.Game
 
         void OnGUI()
         {
-            if (game == null) return;
             EnsureStyles();
             float s = styleScale;
             float w = Screen.width;
+            if (launchOverlay)
+            {
+                DrawLaunchOverlay(w, s);
+                return;
+            }
+            if (game == null) return;
             float top = Screen.height - Screen.safeArea.yMax;
 
             float danger = game.Danger;
             if (!game.IsOver) DangerBorder(danger);
 
-            // Score, record, cycle and titan number.
-            big.fontSize = Mathf.RoundToInt(54 * s * (1f + 0.3f * scorePunch));
-            Shadowed(new Rect(0, top + 10 * s, w, 70 * s), Mathf.RoundToInt(shownScore).ToString("N0"), big);
-            Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record " + Mathf.Max(best, game.Score).ToString("N0"), new GUIStyle(small) { fontSize = Mathf.RoundToInt(16 * s) });
+            // Score (it pulses at 1 Hz while the record is in reach), record chase, cycle and titan number.
+            bool chase = !game.IsOver && HudText.ShowPbMarker(game.Score, session.BestAtStart);
+            float pulse1Hz = chase && !Settings.ReducedFx ? 0.06f * Mathf.Sin(Time.time * 2f * Mathf.PI) : 0f;
+            big.fontSize = Mathf.RoundToInt(54 * s * (1f + 0.3f * scorePunch + pulse1Hz));
+            var scoreRect = new Rect(0, top + 10 * s, w, 70 * s);
+            if (chase) big.normal.textColor = Color.Lerp(Color.white, ArenaView.BannerGold, 0.35f);
+            Shadowed(scoreRect, HudText.Num(Mathf.RoundToInt(shownScore)), big);
+            big.normal.textColor = Color.white;
+            var under = new GUIStyle(small) { fontSize = Mathf.RoundToInt(16 * s) };
+            if (chase)
+            {
+                under.normal.textColor = ArenaView.BannerGold;
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), HudText.PbMarker(game.Score, session.BestAtStart), under);
+            }
+            else if (session.BestAtStart > 0 || game.Score > 0)
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record " + HudText.Num(Mathf.Max(session.BestAtStart, game.Score)), under);
+            else if (profile.legacyBest > 0)
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record vechi (alt punctaj): " + HudText.Num(profile.legacyBest), under);
+            ChainArc(new Vector2(w / 2f + 150 * s, scoreRect.center.y), s);
             int cycle = TitanConfig.CycleIndex(game.Level);
             Shadowed(new Rect(0, top + 98 * s, w, 26 * s), "Ciclul " + (cycle + 1) + " · Titanul #" + game.Level, small);
             CycleDots(new Vector2(w / 2f, top + 136 * s), TitanConfig.CyclePosition(game.Level), s);
@@ -304,6 +466,7 @@ namespace Titan.Game
             GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * danger, bar.height), white);
             GUI.color = Color.white;
             Shadowed(new Rect(bar.xMax - 80 * s, bar.yMax, 80 * s, 22 * s), "ZIDUL", new GUIStyle(small) { alignment = TextAnchor.UpperRight, fontSize = Mathf.RoundToInt(14 * s) });
+            if (!game.IsOver) LiveStars(new Vector2(bar.x, bar.yMax + 4 * s), s);
             if (hiddenColors > 0) HiddenChip(new Vector2(w / 2f, bar.yMax + 6 * s), hiddenColors, s);
 
             if (!game.IsOver) SlotPips(s);
@@ -352,10 +515,14 @@ namespace Titan.Game
             {
                 var old = center.normal.textColor;
                 center.normal.textColor = bannerColor;
-                Shadowed(new Rect(0, Screen.height * 0.36f, w, 60 * s), banner, center);
+                var bannerRect = new Rect(0, Screen.height * 0.36f, w, 60 * s);
+                Shadowed(bannerRect, banner, center);
                 center.normal.textColor = old;
+                if (bannerStars >= 0) BannerStars(new Vector2(w / 2f, bannerRect.yMax + 6 * s), s);
             }
+            if (toast != null && Time.time < toastUntil) Toast(toast, Screen.height * 0.30f, s);
 
+            // Small popups (salvage); piece popups are the one big popup below.
             for (int i = popups.Count - 1; i >= 0; i--)
             {
                 var p = popups[i];
@@ -368,8 +535,10 @@ namespace Titan.Game
                 var sp = cam.WorldToScreenPoint(p.World);
                 if (sp.z <= 0) continue;
                 float rise = age < 0.15f ? Mathf.Lerp(0f, 40f, age / 0.15f) : 40f + (age - 0.15f) * 35f;
-                Shadowed(new Rect(sp.x - 200 * s, Screen.height - sp.y - 40 * s - rise * s, 400 * s, 80 * s), p.Text, center);
+                Shadowed(new Rect(sp.x - 150 * s, Screen.height - sp.y - 30 * s - rise * s, 300 * s, 60 * s), p.Text, label);
             }
+            DrawBigPopup(s);
+            DrawConfetti(s);
 
             if (game.IsOver) DrawGameOver(w, s);
         }
@@ -537,22 +706,6 @@ namespace Titan.Game
                 GUI.DrawTexture(new Rect(r.xMax - edge, r.y, edge, r.height), white);
             }
             GUI.color = Color.white;
-        }
-
-        void DrawGameOver(float w, float s)
-        {
-            var panel = new Rect(w * 0.08f, Screen.height * 0.3f, w * 0.84f, 380 * s);
-            GUI.color = new Color(0.08f, 0.08f, 0.12f, 0.85f);
-            GUI.DrawTexture(panel, white);
-            GUI.color = Color.white;
-            string reason = game.Lost == LoseReason.WallReached ? "Titanul a spart zidul!"
-                : game.Lost == LoseReason.Deadlock ? "BLOCAT! Niciun tun nu mai\nare în ce trage."
-                : "Cele 5 locuri sunt pline\nși niciun tun nu are în ce trage!";
-            Shadowed(new Rect(panel.x, panel.y + 20 * s, panel.width, 80 * s), newBest ? "RECORD NOU!" : reason, center);
-            Shadowed(new Rect(panel.x, panel.y + 105 * s, panel.width, 50 * s), "Scor: " + game.Score.ToString("N0"), center);
-            Shadowed(new Rect(panel.x, panel.y + 155 * s, panel.width, 30 * s), "Titani doborâți: " + (game.Level - 1) + "   ·   Record: " + best.ToString("N0"), small);
-            if (GUI.Button(new Rect(panel.x + 30 * s, panel.y + 240 * s, panel.width - 60 * s, 100 * s), "Joacă din nou", button))
-                NewGame();
         }
     }
 }

@@ -52,6 +52,9 @@ namespace Titan.Sim
         public int PieceCount;
         public double PiecesPerTitan, JointPieceShare, PieceSizeP50, PieceSizeP90, FirstPieceTimeP50;
         public double StrandedPerGame, DeadOnLineAtSlotsFullLoss;
+        /// <summary>CORE-5: clean pieces per titan (same denominator as PiecesPerTitan), clean share of pieces, and the
+        /// star rates over defeated titans (s2 decapitation, s3 clean line).</summary>
+        public double CleanCutsPerTitan, CleanShare, StarDecapitationRate, StarCleanLineRate;
 
         public static BotSummary From(BotKind bot, IList<GameStats> gs)
         {
@@ -149,6 +152,11 @@ namespace Titan.Sim
             s.PieceSizeP90 = Pct(pieces.Select(p => (double)p.Size), .9);
             s.FirstPieceTimeP50 = Pct(pieces.Select(p => p.TimeIntoTitan), .5);
             s.StrandedPerGame = gs.Average(g => (double)g.StrandedByPiece);
+            s.CleanCutsPerTitan = (double)gs.Sum(g => g.CleanCuts) / titansSeen;
+            s.CleanShare = pieces.Count == 0 ? 0 : (double)gs.Sum(g => g.CleanCuts) / pieces.Count;
+            int defeated = gs.Sum(g => g.Defeated);
+            s.StarDecapitationRate = defeated == 0 ? 0 : (double)gs.Sum(g => g.StarDecapitation) / defeated;
+            s.StarCleanLineRate = defeated == 0 ? 0 : (double)gs.Sum(g => g.StarCleanLine) / defeated;
             return s;
         }
 
@@ -193,7 +201,8 @@ namespace Titan.Sim
             w.WriteLine("pieces: " + PieceCount + " => " + F(PiecesPerTitan) + "/titan; from joint shots " + P(JointPieceShare) + "; size p50 " + F(PieceSizeP50, 0) + " p90 " + F(PieceSizeP90, 0)
                 + "; t-into-titan p50 " + F(FirstPieceTimeP50, 0) + "s");
             w.WriteLine("stranded line cannons (color vanished after a fall): " + F(StrandedPerGame) + "/game; dead cannons on the line at a slotsFull loss " + F(DeadOnLineAtSlotsFullLoss) + "/5");
-            w.WriteLine("clean cuts per titan / star rates: not measured yet (the cut grade lands with CORE-5)");
+            w.WriteLine("clean cuts: " + F(CleanCutsPerTitan) + "/titan (" + P(CleanShare) + " of pieces); stars over defeated titans: s2 decapitation " + P(StarDecapitationRate)
+                + "  s3 clean line " + P(StarCleanLineRate));
         }
     }
 }

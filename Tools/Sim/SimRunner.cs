@@ -57,6 +57,7 @@ namespace Titan.Sim
         public int Size;
         public double TimeIntoTitan;
         public bool FromJointShot;
+        public bool Clean;
     }
 
     /// <summary>Everything measured in one simulated run.</summary>
@@ -84,6 +85,9 @@ namespace Titan.Sim
         public int StrandedByPiece;
         public int DeadOnLineAtLoss;
         public double DeadParkedTime;
+
+        /// <summary>CORE-5: clean pieces, defeated titans with the decapitation star (s2) and the clean-line star (s3).</summary>
+        public int CleanCuts, StarDecapitation, StarCleanLine;
     }
 
     /// <summary>Plays the real core with a bot at a fixed dt and records the metrics of DESIGN.md 12.1.</summary>
@@ -223,11 +227,14 @@ namespace Titan.Sim
                         lastShotJoint = titan.IsJoint(e.Cube);
                         break;
                     case EventKind.PieceFell:
-                        st.Pieces.Add(new PieceRecord { Level = level, Size = e.Piece.Count, TimeIntoTitan = t - titanStart, FromJointShot = lastShotJoint });
+                        st.Pieces.Add(new PieceRecord { Level = level, Size = e.Piece.Count, TimeIntoTitan = t - titanStart, FromJointShot = lastShotJoint, Clean = e.Clean });
+                        if (e.Clean) st.CleanCuts++;
                         pieceFell = true;
                         break;
                     case EventKind.TitanDefeated:
                         st.Defeated++;
+                        if ((e.Stars & Stars.Decapitation) != 0) st.StarDecapitation++;
+                        if ((e.Stars & Stars.CleanLine) != 0) st.StarCleanLine++;
                         st.Titans.Add(new TitanRecord { Level = level, Role = e.Role, NearMiss = e.NearMiss, ClearTime = t - titanStart, Approach = approach, Margin = distBefore / cfg.StartDistance });
                         break;
                     case EventKind.TitanSpawned:

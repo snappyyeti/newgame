@@ -128,6 +128,18 @@ namespace Titan.Game
         public void Crash(int size) { source.PlayOneShot(crash, 0.9f); Shake(Mathf.Clamp(0.12f + size * 0.006f, 0.12f, 0.5f), 0.45f); }
         public void Roar() => source.PlayOneShot(roar, 0.8f);
         public void Fanfare() => source.PlayOneShot(fanfare, 0.7f);
+        /// <summary>"RECORD NOU!": the fanfare at volume 0.6.</summary>
+        public void RecordFanfare() => source.PlayOneShot(fanfare, 0.6f);
+        /// <summary>Star i (0..2) pops in on the defeat banner: a tick that rises in pitch; a missing star ticks low.</summary>
+        public void StarTick(int i, bool earned) => PlayPitched(earned ? deploy : hit, earned ? 1f + 0.2f * i : 0.7f, earned ? 0.5f : 0.3f);
+
+        /// <summary>A new run starts (fast restart): nothing scheduled by the previous run may still play.</summary>
+        public void StopRunEffects()
+        {
+            StopAllCoroutines();
+            nextBeat = -1f;
+            shakeLeft = 0f;
+        }
         public void Lose() { source.PlayOneShot(lose, 0.8f); Shake(0.4f, 0.6f); }
 
         public void Shake(float amplitude, float duration)

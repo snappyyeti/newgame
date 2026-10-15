@@ -34,6 +34,8 @@ namespace Titan.Sim
                     "StunBase=0.5", "StunPerCube=0.01", "StunMax=1.0",
                     "NearMissFraction=0.15", "NearMissBonusMult=1.5", "UseCycles=true",
                     "DeadlockSeconds=1.5",                                                              // CORE-4
+                    "CleanCutThreshold=0.8", "CleanCutMult=2", "ChainWindowSeconds=4", "ChainMaxMult=5",
+                    "CleanLineMax=4",                                                                    // CORE-5
                     "VisibleColorBias=0.65",                                                             // locked (ethics)
                 }
             },

@@ -34,8 +34,27 @@ namespace Titan.Game
         };
 
         TitanGame game;
+        TitanConfig config;
         Camera cam;
         Fx fx;
+        /// <summary>Everything that belongs to one run (titans, cannons, falling pieces). Reset destroys it whole.</summary>
+        Transform runRoot;
+        bool firstSpawnOfRun;
+
+        /// <summary>Projectiles are pooled; the ones in flight are returned on Reset.</summary>
+        readonly Stack<Transform> projectilePool = new Stack<Transform>();
+        readonly List<Transform> projectilesInFlight = new List<Transform>();
+
+        /// <summary>Joint stitches and the limb each one holds (gold rim while the limb would still fall clean, CORE-5).</summary>
+        readonly List<Stitch> stitches = new List<Stitch>();
+        int stitchEpoch = -1;
+        Material stitchGoldMat;
+
+        struct Stitch
+        {
+            public Renderer Band;
+            public int Part;
+        }
 
         Material[][] cubeMats;
         Material[] colorMats;
@@ -62,6 +81,8 @@ namespace Titan.Game
         bool cameraReady;
 
         public event Action<Vector3, string> Popup;
+        /// <summary>A piece started to fall: where (world, above its center) and its PieceFell event (points, clean, chain).</summary>
+        public event Action<Vector3, GameEvent> PiecePopup;
         /// <summary>Text, color, seconds. The HUD queues these behind the banner on screen.</summary>
         public event Action<string, Color, float> Banner;
 
@@ -112,9 +133,10 @@ namespace Titan.Game
 
         // ---------------------------------------------------------------- building
 
-        public void Build(TitanGame titanGame, Camera camera, Fx effects)
+        /// <summary>Builds the arena once per app run: ground, wall, slot and tray pads, materials. Runs come and go through <see cref="Reset"/>.</summary>
+        public void Build(TitanConfig cfg, Camera camera, Fx effects)
         {
-            game = titanGame;
+            config = cfg;
             cam = camera;
             fx = effects;
 
@@ -133,22 +155,25 @@ namespace Titan.Game
             }
             darkMat = MakeMaterial(new Color(0.20f, 0.21f, 0.24f));
             stitchMat = MakeMaterial(Color.white);
+            stitchGoldMat = MakeMaterial(new Color(1f, 0.78f, 0.15f));
             metalMat = MakeMaterial(new Color(0.55f, 0.57f, 0.62f));
 
             BuildArena();
+            // Until the first titan fits the camera (the launch overlay shows over an empty arena).
+            cam.transform.SetPositionAndRotation(new Vector3(0f, 12f, -22f), Quaternion.Euler(20f, 0f, 0f));
 
-            int slots = game.Config.LineSlots;
+            int slots = config.LineSlots;
             slotPos = new Vector3[slots];
             line = new CannonView[slots];
             for (int s = 0; s < slots; s++)
             {
-                slotPos[s] = new Vector3(game.SlotX(s), WallTop, -0.5f);
+                slotPos[s] = new Vector3(config.SlotX(s), WallTop, -0.5f);
                 var pad = Primitive(PrimitiveType.Cylinder, "SlotPad", transform, metalMat, false);
                 pad.position = slotPos[s] + Vector3.up * 0.02f;
                 pad.localScale = new Vector3(1.6f, 0.03f, 1.6f);
             }
 
-            trayPos = new Vector3[game.Config.TraySize];
+            trayPos = new Vector3[config.TraySize];
             tray = new CannonView[trayPos.Length];
             emptyRings = new Transform[trayPos.Length];
             var ringMat = MakeMaterial(new Color(0.12f, 0.12f, 0.14f));
@@ -160,6 +185,35 @@ namespace Titan.Game
                 pad.localScale = new Vector3(2.4f, 0.05f, 2.4f);
                 emptyRings[i] = BuildRing(trayPos[i], ringMat);
             }
+        }
+
+        /// <summary>
+        /// Fast restart (RET-2): stops every coroutine of the old run, returns projectiles in flight to the pool and
+        /// destroys the old run's titans, cannons and falling pieces in one go. The camera, wall, pads, rings and
+        /// materials stay. The new game's first events (TitanSpawned, TrayRefilled) then build the titan and the tray.
+        /// </summary>
+        public void Reset(TitanGame titanGame)
+        {
+            StopAllCoroutines();
+            foreach (var p in projectilesInFlight) ReturnProjectile(p);
+            projectilesInFlight.Clear();
+            if (runRoot != null) Destroy(runRoot.gameObject);
+            runRoot = new GameObject("Run").transform;
+            runRoot.SetParent(transform, false);
+
+            game = titanGame;
+            monsterRoot = null;
+            cubes.Clear();
+            stitches.Clear();
+            stitchEpoch = -1;
+            for (int s = 0; s < line.Length; s++) line[s] = null;
+            for (int i = 0; i < tray.Length; i++) tray[i] = null;
+            flyLabels.Clear();
+            dyingTray.Clear();
+            lastPieceTime = -10f;
+            poseFrozen = false;
+            firstSpawnOfRun = true;
+            foreach (var ring in emptyRings) ring.gameObject.SetActive(false);
         }
 
         /// <summary>A dark ring of 16 blocks lying on a tray pad.</summary>
@@ -211,7 +265,7 @@ namespace Titan.Game
             var m = game.Monster;
             float halfW = Mathf.Max(Mathf.Abs(m.MinX), m.MaxX) + 0.5f;
             float top = m.MaxY + 1f;
-            float far = game.Config.StartDistance + m.MaxZ + 1f;
+            float far = config.StartDistance + m.MaxZ + 1f;
 
             var points = new List<Vector3>
             {
@@ -256,6 +310,7 @@ namespace Titan.Game
         {
             if (game == null) return;
             UpdateTitanPose();
+            UpdateStitches();
             for (int i = 0; i < emptyRings.Length; i++)
             {
                 bool empty = game.Tray[i] == null && tray[i] == null && !DyingAt(i);
@@ -264,6 +319,19 @@ namespace Titan.Game
             if (!cameraReady) return;
             cameraBase = Vector3.Lerp(cameraBase, cameraTarget, 1f - Mathf.Exp(-Time.deltaTime * 2f));
             fx.SetCameraBase(cameraBase);
+        }
+
+        /// <summary>Gold rim on a joint's stitch while its limb would still fall clean (≥ 80% left); white after.</summary>
+        void UpdateStitches()
+        {
+            if (game.Monster.Epoch == stitchEpoch) return;
+            stitchEpoch = game.Monster.Epoch;
+            foreach (var st in stitches)
+            {
+                if (st.Band == null) continue;
+                var mat = game.IsCleanEligible(st.Part) ? stitchGoldMat : stitchMat;
+                if (st.Band.sharedMaterial != mat) st.Band.sharedMaterial = mat;
+            }
         }
 
         bool DyingAt(int i)
@@ -442,7 +510,7 @@ namespace Titan.Game
             }
 
             monsterRoot = new GameObject("Titan" + level).transform;
-            monsterRoot.SetParent(transform, false);
+            monsterRoot.SetParent(runRoot, false);
             zShown = zFrom = zTo = game.Distance;
             zDuration = 0f;
             poseFrozen = false;
@@ -457,12 +525,14 @@ namespace Titan.Game
                 var t = Primitive(PrimitiveType.Cube, "Cube", monsterRoot, mat, false);
                 t.localPosition = new Vector3(c.X, c.Y + 0.5f, c.Z + 0.5f);
                 t.localScale = Vector3.one * CubeScale;
-                if (game.Monster.IsJoint(c)) AddStitch(t);
+                if (game.Monster.IsJoint(c)) AddStitch(t, LimbOf(c));
                 else if (game.Monster.IsGlove(c)) MakeGlove(t, mat);
                 cubes[c] = t;
             }
             stepCount = 0;
-            FitCamera(level == 1);
+            stitchEpoch = -1;
+            FitCamera(firstSpawnOfRun);
+            firstSpawnOfRun = false;
             switch (role)
             {
                 case TitanRole.Sprint:
@@ -489,12 +559,26 @@ namespace Titan.Game
             fx.Shake(0.15f, 0.25f);
         }
 
-        /// <summary>The "cusătură" (stitch): a thin white band around a joint cube. The cube keeps its color.</summary>
-        void AddStitch(Transform cube)
+        /// <summary>The "cusătură" (stitch): a thin band around a joint cube (white, gold while the limb is clean-eligible). The cube keeps its color.</summary>
+        void AddStitch(Transform cube, int limb)
         {
             var band = Primitive(PrimitiveType.Cube, "Stitch", cube, stitchMat, false);
             band.localPosition = Vector3.zero;
             band.localScale = new Vector3(1.04f, 0.14f, 1.04f);
+            if (limb > Monster.Body) stitches.Add(new Stitch { Band = band.GetComponent<Renderer>(), Part = limb });
+        }
+
+        /// <summary>The limb a joint holds: the part of its first non-body neighbour (joints themselves are tagged body).</summary>
+        int LimbOf(Int3 joint)
+        {
+            foreach (var d in Int3.Neighbours)
+            {
+                var n = joint + d;
+                if (!game.Monster.Has(n)) continue;
+                int part = game.Monster.PartOf(n);
+                if (part > Monster.Body) return part;
+            }
+            return Monster.Body;
         }
 
         /// <summary>A hand cube: an inset cube of the same material inside a dark edge frame. A shape cue, same luminance.</summary>
@@ -688,8 +772,8 @@ namespace Titan.Game
 
         IEnumerator Projectile(Vector3 from, Transform cube, int color)
         {
-            var bullet = Primitive(PrimitiveType.Sphere, "Shot", transform, colorMats[color], false);
-            bullet.localScale = Vector3.one * 0.35f;
+            var bullet = TakeProjectile(colorMats[color]);
+            bullet.position = from;
             float t = 0f;
             while (t < ProjectileTime && cube != null)
             {
@@ -697,11 +781,37 @@ namespace Titan.Game
                 bullet.position = Vector3.Lerp(from, cube.position, Mathf.Clamp01(t / ProjectileTime));
                 yield return null;
             }
-            Destroy(bullet.gameObject);
+            projectilesInFlight.Remove(bullet);
+            ReturnProjectile(bullet);
             if (cube == null) yield break;
             fx.Burst(cube.position, colorMats[color], 6, 6f);
             fx.Hit();
             StartCoroutine(PopAndDestroy(cube));
+        }
+
+        Transform TakeProjectile(Material mat)
+        {
+            Transform bullet;
+            if (projectilePool.Count > 0)
+            {
+                bullet = projectilePool.Pop();
+                bullet.gameObject.SetActive(true);
+            }
+            else
+            {
+                bullet = Primitive(PrimitiveType.Sphere, "Shot", transform, mat, false);
+                bullet.localScale = Vector3.one * 0.35f;
+            }
+            bullet.GetComponent<Renderer>().sharedMaterial = mat;
+            projectilesInFlight.Add(bullet);
+            return bullet;
+        }
+
+        void ReturnProjectile(Transform bullet)
+        {
+            if (bullet == null) return;
+            bullet.gameObject.SetActive(false);
+            projectilePool.Push(bullet);
         }
 
         IEnumerator Fall(GameEvent e)
@@ -723,7 +833,7 @@ namespace Titan.Game
 
             // The piece becomes one rigid body made of its cubes and tumbles down.
             var root = new GameObject("Piece").transform;
-            root.SetParent(transform, false);
+            root.SetParent(runRoot, false);
             root.position = center;
             foreach (var p in parts)
             {
@@ -738,7 +848,7 @@ namespace Titan.Game
             body.AddTorque(UnityEngine.Random.insideUnitSphere * 3f, ForceMode.VelocityChange);
 
             fx.Crash(parts.Count);
-            Popup?.Invoke(center + Vector3.up * 1.5f, "BUCATĂ RUPTĂ!\n+" + e.Points);
+            PiecePopup?.Invoke(center + Vector3.up * 1.5f, e);
 
             yield return new WaitForSeconds(2.6f);
             if (root == null) yield break;
@@ -760,22 +870,15 @@ namespace Titan.Game
             if (monsterRoot == null) return;
             stepCount++;
             sway = (stepCount & 1) == 0 ? 2.5f : -2.5f;
-            fx.Step(1f - distance / game.Config.StartDistance);
+            fx.Step(1f - distance / config.StartDistance);
             MoveTitanTo(distance, StepTime, false);
         }
 
+        /// <summary>The defeat banner (with the titan's stars) is the HUD's; the view plays the fanfare.</summary>
         void Defeated(GameEvent e)
         {
-            if (e.NearMiss)
-            {
-                fx.NearMissFanfare();
-                Banner?.Invoke("LA MUSTAȚĂ!  x" + game.Config.NearMissBonusMult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), BannerGold, 1.6f);
-            }
-            else
-            {
-                fx.Fanfare();
-                Banner?.Invoke("TITAN DOBORÂT!  +" + e.Points, BannerWhite, 1.4f);
-            }
+            if (e.NearMiss) fx.NearMissFanfare();
+            else fx.Fanfare();
         }
 
         IEnumerator GameOver(LoseReason reason)
@@ -800,7 +903,7 @@ namespace Titan.Game
         CannonView MakeCannon(int color, Vector3 position, float scale)
         {
             var root = new GameObject("Cannon").transform;
-            root.SetParent(transform, false);
+            root.SetParent(runRoot, false);
             root.position = position;
             root.localScale = Vector3.one * scale;
 

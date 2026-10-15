@@ -3,32 +3,37 @@ using UnityEngine;
 namespace Titan.Game
 {
     /// <summary>
-    /// Player settings read by the view, the HUD and Fx. Only "Efecte reduse" exists so far (CORE-4 reads it); UX-1 adds
-    /// the pause menu that changes it and the other settings. Stored in PlayerPrefs until RET-1 moves it into the profile.
+    /// Player settings read by the view, the HUD and Fx. They live in the profile (RET-1, <see cref="Titan.Core.ProfileSettings"/>):
+    /// <see cref="Bind"/> connects them at startup, and every change asks for a save. Before Bind (or without a profile)
+    /// they fall back to the CORE-4 PlayerPrefs key, which a new profile migrates. UX-1 adds the pause menu that changes them.
     /// </summary>
     public static class Settings
     {
         const string ReducedFxKey = "set_reducedFx";
-        static bool loaded;
-        static bool reducedFx;
+        static Titan.Core.ProfileSettings bound;
+        static System.Action changed;
+
+        /// <summary>Settings now read and write <paramref name="settings"/>; <paramref name="onChanged"/> saves the profile.</summary>
+        public static void Bind(Titan.Core.ProfileSettings settings, System.Action onChanged)
+        {
+            bound = settings;
+            changed = onChanged;
+        }
 
         /// <summary>"Efecte reduse": no shake, no pulsing borders (they stay static).</summary>
         public static bool ReducedFx
         {
-            get
-            {
-                if (!loaded)
-                {
-                    reducedFx = PlayerPrefs.GetInt(ReducedFxKey, 0) == 1;
-                    loaded = true;
-                }
-                return reducedFx;
-            }
+            get => bound != null ? bound.reducedFx : PlayerPrefs.GetInt(ReducedFxKey, 0) == 1;
             set
             {
-                reducedFx = value;
-                loaded = true;
-                PlayerPrefs.SetInt(ReducedFxKey, value ? 1 : 0);
+                if (bound == null)
+                {
+                    PlayerPrefs.SetInt(ReducedFxKey, value ? 1 : 0);
+                    return;
+                }
+                if (bound.reducedFx == value) return;
+                bound.reducedFx = value;
+                changed?.Invoke();
             }
         }
     }
@@ -60,6 +65,11 @@ namespace Titan.Game
             }
             return symbols[((color % symbols.Length) + symbols.Length) % symbols.Length];
         }
+
+        static Texture2D bigStar;
+
+        /// <summary>A five-pointed star filling the texture (the titan grade on the defeat banner).</summary>
+        public static Texture2D StarGlyph => bigStar != null ? bigStar : (bigStar = Make("grade-star", (x, y) => Star(x * 0.92f, y * 0.92f)));
 
         public static Texture2D Dot => dot != null ? dot : (dot = Make("dot", (x, y) => x * x + y * y < 0.42f * 0.42f));
 
