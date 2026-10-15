@@ -25,7 +25,7 @@ namespace Titan.Sim
         public bool Tappable(int i) => game.CanDeploy(i);
         public int TrayColor(int i) => game.Tray[i] != null ? game.Tray[i].Color : -1;
         public int TrayAmmo(int i) => game.Tray[i] != null ? game.Tray[i].Ammo : 0;
-        public int LineSlots => game.Line.Length;
+        public int LineSlots => game.ActiveSlots;
         public int LineColor(int s) => game.Line[s] != null ? game.Line[s].Color : -1;
         public int LineAmmo(int s) => game.Line[s] != null ? game.Line[s].Ammo : 0;
         public int FreeSlots => SimRunner.Free(game);
@@ -60,6 +60,20 @@ namespace Titan.Sim
         public bool Clean;
     }
 
+    /// <summary>
+    /// Measurement modes of the runner. Balance runs use the defaults: every helper OFF (ethics lock, DESIGN.md 11.2).
+    /// The revive mode exists ONLY to measure what "A doua suflare" is worth (ADS-2): the run is revived once, at its
+    /// first loss, when the revive would be offered (≥ 1 titan defeated or ≥ 15% of the current one destroyed).
+    /// The bot never decides it and never sees it.
+    /// </summary>
+    public sealed class SimOptions
+    {
+        public bool Revive;
+        public float RevivePushBack = 0.25f;
+        public float ReviveGraceSeconds = 2.0f;
+        public float ReviveMinProgress = 0.15f;
+    }
+
     /// <summary>Everything measured in one simulated run.</summary>
     public sealed class GameStats
     {
@@ -88,6 +102,17 @@ namespace Titan.Sim
 
         /// <summary>CORE-5: clean pieces, defeated titans with the decapitation star (s2) and the clean-line star (s3).</summary>
         public int CleanCuts, StarDecapitation, StarCleanLine;
+
+        /// <summary>ADS-2 "+1 Loc" ship check: titans n ≥ 2 played, and those where ≥ 4 slots taken with ≥ 3 idle held ≥ 1.0 s.</summary>
+        public int ExtraSlotTitans, ExtraSlotTriggered;
+
+        /// <summary>ADS-2 revive mode: the first loss was revivable (offered), was revived, and what came after.</summary>
+        public bool ReviveOffered, Revived;
+        public LoseReason FirstLossReason;
+        public int DefeatedAtRevive;
+        public double TimeAtRevive;
+        public int DefeatedAfterRevive => Revived ? Defeated - DefeatedAtRevive : 0;
+        public double SecondsAfterRevive => Revived ? RunTime - TimeAtRevive : 0;
     }
 
     /// <summary>Plays the real core with a bot at a fixed dt and records the metrics of DESIGN.md 12.1.</summary>
@@ -97,17 +122,13 @@ namespace Titan.Sim
         /// <summary>A run is cut at 30 minutes (DESIGN.md 12.1: Smart reaches the cap in &lt; 2% of games).</summary>
         public const double MaxTime = 1800;
 
-        public static int Free(TitanGame g)
-        {
-            int n = 0;
-            foreach (var c in g.Line) if (c == null) n++;
-            return n;
-        }
+        /// <summary>Free firing slots among the active ones (Line has a closed 6th entry for "+1 Loc").</summary>
+        public static int Free(TitanGame g) => g.FreeSlots;
 
         public static int Firing(TitanGame g)
         {
             int n = 0;
-            foreach (var c in g.Line) if (c != null && g.Monster.HasVisibleOfColor(c.Color)) n++;
+            for (int s = 0; s < g.ActiveSlots; s++) if (g.Line[s] != null && g.Monster.HasVisibleOfColor(g.Line[s].Color)) n++;
             return n;
         }
 
@@ -129,15 +150,30 @@ namespace Titan.Sim
         public static ulong GameSeed(ulong masterSeed, int index) => SeededRandom.Derive(masterSeed, (ulong)index);
 
         /// <summary>Plays <paramref name="games"/> runs in parallel. Deterministic: results depend only on the seeds.</summary>
-        public static GameStats[] RunMany(BotKind bot, TitanConfig cfg, int games, ulong masterSeed)
+        public static GameStats[] RunMany(BotKind bot, TitanConfig cfg, int games, ulong masterSeed, SimOptions options = null)
         {
             var result = new GameStats[games];
-            Parallel.For(0, games, i => result[i] = Play(bot, cfg, GameSeed(masterSeed, i)));
+            Parallel.For(0, games, i => result[i] = Play(bot, cfg, GameSeed(masterSeed, i), options));
             return result;
         }
 
-        public static GameStats Play(BotKind bot, TitanConfig cfg, ulong seed)
+        /// <summary>The ≥ 4 occupied / ≥ 3 idle condition of the "+1 Loc" wall button (AdConfig defaults).</summary>
+        public static bool ExtraSlotCondition(TitanGame g)
         {
+            int occupied = 0, idle = 0;
+            for (int s = 0; s < g.ActiveSlots; s++)
+            {
+                var c = g.Line[s];
+                if (c == null) continue;
+                occupied++;
+                if (!g.Monster.HasVisibleOfColor(c.Color)) idle++;
+            }
+            return occupied >= 4 && idle >= 3;
+        }
+
+        public static GameStats Play(BotKind bot, TitanConfig cfg, ulong seed, SimOptions options = null)
+        {
+            options = options ?? new SimOptions();
             var rng = new SeededRandom(SeededRandom.Hash(seed, 1));
             var botRng = new SeededRandom(SeededRandom.Hash(seed, 2));
             var g = new TitanGame(cfg, rng);
@@ -150,8 +186,26 @@ namespace Titan.Sim
             int lastDecision = -1; // 0 tap, 1 wait, 2 line full
             bool lastShotJoint = false;
             var titan = g.Monster; // the titan the events refer to (g.Monster may already be the next one)
+            double extraHeld = 0;
+            bool extraTriggered = false;
+            int extraTitan = g.Level;
 
-            while (!g.IsOver && t < MaxTime)
+            // ADS-2 revive mode only (never in balance runs): revive once at the first loss, if it would be offered.
+            bool TryRevive()
+            {
+                if (!options.Revive || st.ReviveOffered || st.Revived || !g.IsOver) return false;
+                st.FirstLossReason = g.Lost;
+                if (!g.CanRevive || (st.Defeated < 1 && g.ProgressFraction < options.ReviveMinProgress)) return false;
+                st.ReviveOffered = true;
+                st.DefeatedAtRevive = st.Defeated;
+                st.TimeAtRevive = t;
+                st.Revived = g.Revive(options.RevivePushBack, options.ReviveGraceSeconds);
+                g.Events.Clear();
+                stuck = 0;
+                return st.Revived;
+            }
+
+            while (t < MaxTime && (!g.IsOver || TryRevive()))
             {
                 if (t >= next)
                 {
@@ -186,8 +240,24 @@ namespace Titan.Sim
                 if (g.IsOver)
                 {
                     ReadEvents(g, st, ref level, ref titanStart, ref lastShotJoint, ref titan, t, g.Distance, g.ApproachSeconds, cfg);
+                    if (TryRevive()) continue;
                     break;
                 }
+
+                // "+1 Loc" ship check: did the wall-button condition hold for 1.0 s during this titan (n >= 2)?
+                if (g.Level != extraTitan)
+                {
+                    if (extraTitan >= 2)
+                    {
+                        st.ExtraSlotTitans++;
+                        if (extraTriggered) st.ExtraSlotTriggered++;
+                    }
+                    extraTitan = g.Level;
+                    extraHeld = 0;
+                    extraTriggered = false;
+                }
+                extraHeld = ExtraSlotCondition(g) ? extraHeld + Dt : 0;
+                if (extraHeld >= 1.0 - 1e-6) extraTriggered = true;
 
                 // Time accounting, before the tick (the state the player is looking at).
                 int firing = Firing(g);
@@ -209,6 +279,11 @@ namespace Titan.Sim
                 g.Tick((float)Dt);
                 t += Dt;
                 ReadEvents(g, st, ref level, ref titanStart, ref lastShotJoint, ref titan, t, distBefore, approach, cfg);
+            }
+            if (extraTitan >= 2)
+            {
+                st.ExtraSlotTitans++;
+                if (extraTriggered) st.ExtraSlotTriggered++;
             }
             st.RunTime = t;
             st.Score = g.Score;

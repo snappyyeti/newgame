@@ -24,6 +24,8 @@ namespace Titan.Sim
   --set Key=Value    override any public TitanConfig field, repeatable (e.g. --set ApproachSecondsPerCube=0.08)
   --seed S           master seed, unsigned 64-bit (default 1); game i uses SeededRandom.Derive(S, i)
   --static           also print the titan composition table per level
+  --revive [LIST]    ADS-2 measurement ONLY (not balance): revive once at the first loss with each push-back in
+                     LIST (default 0.25,0.40,0.60) and report what the revive is worth; helpers stay OFF otherwise
   --help             this text";
 
         static int Main(string[] args)
@@ -34,6 +36,7 @@ namespace Titan.Sim
             var bots = new List<BotKind> { BotKind.Random, BotKind.Greedy, BotKind.Smart };
             var sets = new List<string>();
             bool showStatic = false;
+            List<float> revivePushes = null;
 
             try
             {
@@ -48,6 +51,11 @@ namespace Titan.Sim
                         case "--set": sets.Add(Next(args, ref i)); break;
                         case "--bots": bots = Next(args, ref i).Split(',').Select(Bots.Parse).Distinct().ToList(); break;
                         case "--static": showStatic = true; break;
+                        case "--revive":
+                            revivePushes = new List<float> { 0.25f, 0.40f, 0.60f };
+                            if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+                                revivePushes = args[++i].Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToList();
+                            break;
                         case "--help":
                         case "-h":
                             Console.WriteLine(Usage);
@@ -83,6 +91,18 @@ namespace Titan.Sim
                 foreach (var w in warnings) Console.WriteLine("   - " + w);
             }
             if (showStatic) Static(cfg);
+
+            if (revivePushes != null)
+            {
+                Console.WriteLine("ADS-2 revive measurement (NOT a balance run): one revive at the first loss when it would be offered");
+                foreach (var bot in bots)
+                    foreach (float push in revivePushes)
+                    {
+                        var opts = new SimOptions { Revive = true, RevivePushBack = push };
+                        BotSummary.PrintRevive(Console.Out, bot, push, SimRunner.RunMany(bot, cfg, games, seed, opts));
+                    }
+                return 0;
+            }
 
             var summaries = new Dictionary<BotKind, BotSummary>();
             foreach (var bot in bots)

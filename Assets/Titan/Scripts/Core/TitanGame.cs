@@ -182,6 +182,8 @@ namespace Titan.Core
         GameOver,       // Reason
         Salvaged,       // Slot (line cannon leaves) or TraySlot (tray cannon loses Ammo); Color, Ammo, Points
         Staggered,      // a fallen piece knocked the titan back: Distance (new), Piece
+        Revived,        // "A doua suflare": the lost run continues (Distance, Ammo = idle line cannons sent back to the deck)
+        SlotAdded,      // "+1 Loc": Slot (the 6th firing slot, index LineSlots) opens until the titan falls
     }
 
     public enum LoseReason
@@ -260,7 +262,14 @@ namespace Titan.Core
         public LoseReason Lost { get; private set; }
         public bool IsOver => Lost != LoseReason.None;
         public readonly Cannon[] Tray;
+        /// <summary>
+        /// The firing line: LineSlots + 1 entries, of which only the first <see cref="ActiveSlots"/> are in play. The
+        /// last one is the "+1 Loc" slot (ADS-2), open only after <see cref="GrantExtraSlot"/> until the titan falls.
+        /// Every rule loops over 0..ActiveSlots-1.
+        /// </summary>
         public readonly Cannon[] Line;
+        /// <summary>Firing slots in play: LineSlots, or LineSlots + 1 after <see cref="GrantExtraSlot"/> (resets at every spawn).</summary>
+        public int ActiveSlots { get; private set; }
         public readonly List<GameEvent> Events = new List<GameEvent>();
 
         float stepTimer;
@@ -277,7 +286,8 @@ namespace Titan.Core
             this.rng = rng;
             this.titanSource = titanSource;
             Tray = new Cannon[config.TraySize];
-            Line = new Cannon[config.LineSlots];
+            Line = new Cannon[config.LineSlots + 1];
+            ActiveSlots = config.LineSlots;
             StartTitan = startLevel;
             SpawnTitan(startLevel);
         }
@@ -294,7 +304,8 @@ namespace Titan.Core
             RunSeed = runSeed;
             this.titanSource = titanSource;
             Tray = new Cannon[config.TraySize];
-            Line = new Cannon[config.LineSlots];
+            Line = new Cannon[config.LineSlots + 1];
+            ActiveSlots = config.LineSlots;
             StartTitan = Math.Max(1, startTitan);
             Score = Math.Max(0, startScore);
             SpawnTitan(StartTitan);
@@ -379,7 +390,7 @@ namespace Titan.Core
             int n = 0;
             foreach (var c in deck) if (c.Color == color) n += c.Ammo;
             foreach (var c in Tray) if (c != null && c.Color == color) n += c.Ammo;
-            foreach (var c in Line) if (c != null && c.Color == color) n += c.Ammo;
+            for (int s = 0; s < ActiveSlots; s++) if (Line[s] != null && Line[s].Color == color) n += Line[s].Ammo;
             return n;
         }
 
@@ -403,7 +414,7 @@ namespace Titan.Core
         {
             get
             {
-                foreach (var c in Line) if (c == null) return true;
+                for (int s = 0; s < ActiveSlots; s++) if (Line[s] == null) return true;
                 return false;
             }
         }
@@ -413,7 +424,7 @@ namespace Titan.Core
             get
             {
                 int n = 0;
-                foreach (var c in Line) if (c == null) n++;
+                for (int s = 0; s < ActiveSlots; s++) if (Line[s] == null) n++;
                 return n;
             }
         }
@@ -436,8 +447,8 @@ namespace Titan.Core
         /// <summary>True when some line cannon has a visible cube of its color.</summary>
         bool AnyLineCannonFiring()
         {
-            foreach (var c in Line)
-                if (c != null && Monster.HasVisibleOfColor(c.Color)) return true;
+            for (int s = 0; s < ActiveSlots; s++)
+                if (Line[s] != null && Monster.HasVisibleOfColor(Line[s].Color)) return true;
             return false;
         }
 
@@ -452,7 +463,7 @@ namespace Titan.Core
         public bool Deploy(int traySlot)
         {
             if (!CanDeploy(traySlot)) return false;
-            int slot = Array.IndexOf(Line, null);
+            int slot = FirstFreeSlot();
             var cannon = Tray[traySlot];
             Tray[traySlot] = null;
             cannon.Cooldown = Config.DeployDelay;
@@ -523,7 +534,7 @@ namespace Titan.Core
             if (IsOver) return;
 
             // Cannons on the line shoot.
-            for (int s = 0; s < Line.Length; s++)
+            for (int s = 0; s < ActiveSlots; s++)
             {
                 var cannon = Line[s];
                 if (cannon == null) continue;
@@ -536,6 +547,7 @@ namespace Titan.Core
                         break;
                     }
                     Shoot(s, cannon, target);
+                    if (s >= Config.LineSlots) ExtraSlotShots++;
                     cannon.Cooldown += Config.FireInterval;
                     if (Monster.Count == 0 || Line[s] != cannon) break; // salvage may have taken it off the line
                 }
@@ -616,7 +628,7 @@ namespace Titan.Core
 
         void TrackLine()
         {
-            int occupied = Line.Length - FreeSlots;
+            int occupied = ActiveSlots - FreeSlots;
             if (occupied > MaxOccupiedLine) MaxOccupiedLine = occupied;
         }
 
@@ -641,7 +653,7 @@ namespace Titan.Core
             bool trayEmptied = false;
 
             // i) Line cannons whose color is gone fly off the wall, with points.
-            for (int s = 0; s < Line.Length; s++)
+            for (int s = 0; s < ActiveSlots; s++)
             {
                 var c = Line[s];
                 if (c == null || c.Ammo <= 0 || Monster.CountOfColor(c.Color) > 0) continue; // Ammo 0: Tick retires it
@@ -657,7 +669,7 @@ namespace Titan.Core
                 foreach (var c in deck) if (c.Color == color) deckAmmo += c.Ammo;
                 foreach (var c in Tray) if (c != null && c.Color == color) trayAmmo += c.Ammo;
                 if (deckAmmo + trayAmmo == 0) continue;
-                foreach (var c in Line) if (c != null && c.Color == color) lineAmmo += c.Ammo;
+                for (int s = 0; s < ActiveSlots; s++) if (Line[s] != null && Line[s].Color == color) lineAmmo += Line[s].Ammo;
                 // Surplus counts the line too: ammo already on the wall covers its cubes first, so a falling piece
                 // takes all the dead ammo off the deck and tray at once (no trickle of "-1" on later shots).
                 int surplus = Math.Min(deckAmmo + trayAmmo + lineAmmo - Monster.CountOfColor(color), deckAmmo + trayAmmo);
@@ -726,7 +738,7 @@ namespace Titan.Core
         {
             get
             {
-                int slot = Array.IndexOf(Line, null);
+                int slot = FirstFreeSlot();
                 return slot < 0 ? 0 : slot;
             }
         }
@@ -785,13 +797,96 @@ namespace Titan.Core
             return cutAt;
         }
 
-        /// <summary>Lose when all five slots hold cannons and none of them has anything visible to shoot.</summary>
+        // ---------------------------------------------------------------- rescues (ADS-2): pure game rules, no ad code
+
+        /// <summary>Times this run was continued with <see cref="Revive"/>.</summary>
+        public int Revives { get; private set; }
+        /// <summary>Shots fired from the "+1 Loc" slot during the current titan.</summary>
+        public int ExtraSlotShots { get; private set; }
+        /// <summary>Cubes the current titan had when it spawned.</summary>
+        public int SpawnCubes { get; private set; }
+        /// <summary>Share of the current titan already destroyed: (spawn cubes − cubes left) / spawn cubes.</summary>
+        public float ProgressFraction => SpawnCubes > 0 ? (SpawnCubes - Monster.Count) / (float)SpawnCubes : 0f;
+        public bool ExtraSlotActive => ActiveSlots > Config.LineSlots;
+
+        /// <summary>True when the run can be continued: it is over at the wall, with full slots or blocked.</summary>
+        public bool CanRevive => Lost == LoseReason.WallReached || Lost == LoseReason.SlotsFull || Lost == LoseReason.Deadlock;
+
+        /// <summary>
+        /// "A doua suflare" (DESIGN.md 10.2 A): continues a lost run on the same titan with all its damage. Idle line
+        /// cannons (no visible color) go back into the deck when their color still has cubes, the titan is pushed back
+        /// by <paramref name="pushBackFraction"/> of the start distance and waits <paramref name="graceSeconds"/>
+        /// before its next step, and a tray with no visible color is redrawn from visible colors. Every cube stays;
+        /// ammo moves between line, deck and tray only (the salvage invariant holds). Returns false when the run is not
+        /// over by a revivable loss. How often it may happen is not a game rule: the caller decides (once per run).
+        /// </summary>
+        public bool Revive(float pushBackFraction, float graceSeconds)
+        {
+            if (!CanRevive) return false;
+            Lost = LoseReason.None;
+
+            int returned = 0;
+            for (int s = 0; s < Line.Length; s++)
+            {
+                var c = Line[s];
+                if (c == null || Monster.HasVisibleOfColor(c.Color)) continue;
+                Line[s] = null;
+                if (c.Ammo <= 0 || Monster.CountOfColor(c.Color) == 0) continue; // nothing left to hit: dropped
+                c.Cooldown = 0f;
+                deck.Insert(rng.Range(0, deck.Count + 1), c);
+                returned++;
+            }
+            Salvage(); // a returned cannon may hold more than its color's cubes: the deck surplus goes, silently
+
+            Distance = Math.Min(Config.StartDistance, Distance + pushBackFraction * Config.StartDistance);
+            stepTimer = -graceSeconds;
+
+            bool trayVisible = AnyTrayCannonVisible();
+            if (!trayVisible)
+            {
+                for (int i = 0; i < Tray.Length; i++)
+                {
+                    if (Tray[i] == null) continue;
+                    deck.Insert(rng.Range(0, deck.Count + 1), Tray[i]);
+                    Tray[i] = null;
+                }
+                for (int i = 0; i < Tray.Length; i++) Tray[i] = Draw(i, true);
+            }
+
+            stuckTimer = 0f;
+            Revives++;
+            Events.Add(new GameEvent { Kind = EventKind.Revived, Distance = Distance, Level = Level, Ammo = returned });
+            if (!trayVisible) Events.Add(new GameEvent { Kind = EventKind.TrayRefilled });
+            return true;
+        }
+
+        /// <summary>
+        /// "+1 Loc" (DESIGN.md 10.2 B): opens the 6th firing slot (index LineSlots, at SlotX = 7.2 so the others do not
+        /// move) until the current titan falls. Once per titan; false when it is already open or the run is over.
+        /// </summary>
+        public bool GrantExtraSlot()
+        {
+            if (IsOver || ActiveSlots != Config.LineSlots) return false;
+            ActiveSlots++;
+            stuckTimer = 0f;
+            Events.Add(new GameEvent { Kind = EventKind.SlotAdded, Slot = Config.LineSlots, Level = Level });
+            return true;
+        }
+
+        /// <summary>The first free slot among the active ones, or -1.</summary>
+        int FirstFreeSlot()
+        {
+            for (int s = 0; s < ActiveSlots; s++) if (Line[s] == null) return s;
+            return -1;
+        }
+
+        /// <summary>Lose when every active slot holds a cannon and none of them has anything visible to shoot.</summary>
         void CheckSlotsFull()
         {
             if (IsOver) return;
             Salvage();
-            foreach (var c in Line)
-                if (c == null || Monster.HasVisibleOfColor(c.Color)) return;
+            for (int s = 0; s < ActiveSlots; s++)
+                if (Line[s] == null || Monster.HasVisibleOfColor(Line[s].Color)) return;
             Lose(LoseReason.SlotsFull);
         }
 
@@ -804,7 +899,7 @@ namespace Titan.Core
         void DefeatTitan()
         {
             int leftover = 0;
-            foreach (var c in Line) if (c != null) leftover += c.Ammo;
+            for (int s = 0; s < ActiveSlots; s++) if (Line[s] != null) leftover += Line[s].Ammo;
             int bonus = DefeatBonus(Level, Role, out bool nearMiss) + leftover * Config.PointsPerLeftoverAmmo;
             Score += bonus;
             int stars = TitanStars();
@@ -848,6 +943,9 @@ namespace Titan.Core
             LastPieceTime = float.NegativeInfinity;
             MaxOccupiedLine = 0;
             DecapitatedThisTitan = false;
+            ActiveSlots = Config.LineSlots; // "+1 Loc" lasts until this titan falls
+            ExtraSlotShots = 0;
+            SpawnCubes = Monster.Count;
             ApproachSeconds = Config.ApproachSeconds(level, Monster.Count);
             stepLength = Config.StartDistance / (ApproachSeconds / Config.StepInterval);
             for (int i = 0; i < Line.Length; i++) Line[i] = null;
@@ -898,13 +996,19 @@ namespace Titan.Core
         }
 
         /// <summary>Draws the cannon for tray slot <paramref name="slot"/> (the other slots are already filled), or null if the deck is empty.</summary>
-        Cannon Draw(int slot)
+        Cannon Draw(int slot) => Draw(slot, false);
+
+        /// <summary>
+        /// <paramref name="visibleOnly"/>: the revive redraw (bias 1.0): a visible-color cannon whenever the deck has
+        /// one, else a random one. The normal draw uses VisibleColorBias (ethics lock: never tied to ads).
+        /// </summary>
+        Cannon Draw(int slot, bool visibleOnly)
         {
             if (deck.Count == 0) TopUpDeck();
             if (deck.Count == 0) return null;
 
             int index = -1;
-            if (rng.Value() < Config.VisibleColorBias)
+            if (visibleOnly || rng.Value() < Config.VisibleColorBias)
             {
                 var visible = new List<int>();
                 for (int i = 0; i < deck.Count; i++)
@@ -912,7 +1016,7 @@ namespace Titan.Core
                 if (visible.Count > 0) index = visible[rng.Range(0, visible.Count)];
             }
             if (index < 0) index = rng.Range(0, deck.Count);
-            if (Config.NoTripleColor) index = AvoidTriple(slot, index);
+            if (Config.NoTripleColor) index = AvoidTriple(slot, index, visibleOnly);
             var cannon = deck[index];
             deck.RemoveAt(index);
             return cannon;
@@ -922,7 +1026,7 @@ namespace Titan.Core
         /// No 3 of a kind (DESIGN.md 4.2.4): when the two other tray cannons share color X and the draw is X too, the draw
         /// becomes a uniform pick among the deck cannons of any other color, if there are any.
         /// </summary>
-        int AvoidTriple(int slot, int index)
+        int AvoidTriple(int slot, int index, bool visibleOnly = false)
         {
             int shared = -1, others = 0;
             for (int i = 0; i < Tray.Length; i++)
@@ -935,6 +1039,12 @@ namespace Titan.Core
             if (others != Tray.Length - 1 || others < 2 || deck[index].Color != shared) return index;
             var pool = new List<int>();
             for (int i = 0; i < deck.Count; i++) if (deck[i].Color != shared) pool.Add(i);
+            if (visibleOnly)
+            {
+                // The revive redraw keeps to visible colors when it can.
+                var visiblePool = pool.FindAll(i => Monster.HasVisibleOfColor(deck[i].Color));
+                if (visiblePool.Count > 0) pool = visiblePool;
+            }
             return pool.Count > 0 ? pool[rng.Range(0, pool.Count)] : index;
         }
 
@@ -947,7 +1057,7 @@ namespace Titan.Core
                 need.TryGetValue(kv.Value, out int n);
                 need[kv.Value] = n + 1;
             }
-            foreach (var c in Line) if (c != null && need.ContainsKey(c.Color)) need[c.Color] -= c.Ammo;
+            for (int s = 0; s < ActiveSlots; s++) if (Line[s] != null && need.ContainsKey(Line[s].Color)) need[Line[s].Color] -= Line[s].Ammo;
             foreach (var c in Tray) if (c != null && need.ContainsKey(c.Color)) need[c.Color] -= c.Ammo;
             foreach (var kv in need) if (kv.Value > 0) AddCannons(kv.Key, kv.Value);
         }

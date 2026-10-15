@@ -221,7 +221,7 @@ namespace Titan.Tests
         /// <summary>Deploys tray cannon i alone on an emptied line and returns the 1-based shot that made a piece fall (0 = none).</summary>
         static int DeployAloneAndWatch(TitanGame g, int i, out int fired)
         {
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
             var cannon = g.Tray[i];
             int startLevel = g.Level;
             Assert.IsTrue(g.Deploy(i));
@@ -251,7 +251,7 @@ namespace Titan.Tests
                 float warmup = (seed / 8) % 3 * 6f; // at spawn, after 6 s and after 12 s of play
                 var probe = Replay(seed, level, warmup);
                 if (probe.IsOver) continue;
-                for (int s = 0; s < probe.Line.Length; s++) probe.Line[s] = null; // alone on an empty line
+                for (int s = 0; s < probe.ActiveSlots; s++) probe.Line[s] = null; // alone on an empty line
                 for (int i = 0; i < probe.Tray.Length; i++)
                 {
                     var c = probe.Tray[i];

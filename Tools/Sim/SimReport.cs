@@ -55,6 +55,9 @@ namespace Titan.Sim
         /// <summary>CORE-5: clean pieces per titan (same denominator as PiecesPerTitan), clean share of pieces, and the
         /// star rates over defeated titans (s2 decapitation, s3 clean line).</summary>
         public double CleanCutsPerTitan, CleanShare, StarDecapitationRate, StarCleanLineRate;
+        /// <summary>ADS-2 ship check: share of titans n ≥ 2 where the "+1 Loc" condition held ≥ 1.0 s.</summary>
+        public double ExtraSlotTriggerShare;
+        public int ExtraSlotTitans;
 
         public static BotSummary From(BotKind bot, IList<GameStats> gs)
         {
@@ -157,6 +160,8 @@ namespace Titan.Sim
             int defeated = gs.Sum(g => g.Defeated);
             s.StarDecapitationRate = defeated == 0 ? 0 : (double)gs.Sum(g => g.StarDecapitation) / defeated;
             s.StarCleanLineRate = defeated == 0 ? 0 : (double)gs.Sum(g => g.StarCleanLine) / defeated;
+            s.ExtraSlotTitans = gs.Sum(g => g.ExtraSlotTitans);
+            s.ExtraSlotTriggerShare = s.ExtraSlotTitans == 0 ? 0 : (double)gs.Sum(g => g.ExtraSlotTriggered) / s.ExtraSlotTitans;
             return s;
         }
 
@@ -203,6 +208,19 @@ namespace Titan.Sim
             w.WriteLine("stranded line cannons (color vanished after a fall): " + F(StrandedPerGame) + "/game; dead cannons on the line at a slotsFull loss " + F(DeadOnLineAtSlotsFullLoss) + "/5");
             w.WriteLine("clean cuts: " + F(CleanCutsPerTitan) + "/titan (" + P(CleanShare) + " of pieces); stars over defeated titans: s2 decapitation " + P(StarDecapitationRate)
                 + "  s3 clean line " + P(StarCleanLineRate));
+            w.WriteLine("'+1 Loc' trigger (>=4 taken, >=3 idle for 1.0 s) on " + F(100 * ExtraSlotTriggerShare, 1) + "% of " + ExtraSlotTitans + " titans n>=2 (ship check: >= 5%)");
+        }
+
+        /// <summary>ADS-2 revive mode: what one revive at the first loss is worth.</summary>
+        public static void PrintRevive(TextWriter w, BotKind bot, float pushBack, IList<GameStats> gs)
+        {
+            var revived = gs.Where(g => g.Revived).ToList();
+            int firstLosses = gs.Count(g => g.FirstLossReason != LoseReason.None);
+            double gain1 = revived.Count == 0 ? 0 : (double)revived.Count(g => g.DefeatedAfterRevive >= 1) / revived.Count;
+            w.WriteLine(bot + " revive push-back " + F(pushBack) + ": offered at " + P(firstLosses == 0 ? 0 : (double)gs.Count(g => g.ReviveOffered) / firstLosses) + " of first losses ("
+                + revived.Count + " revives); >= 1 more titan in " + P(gain1) + "; titans after p50 " + F(Pct(revived.Select(g => (double)g.DefeatedAfterRevive), .5), 1)
+                + " mean " + F(revived.Count == 0 ? 0 : revived.Average(g => (double)g.DefeatedAfterRevive)) + "; seconds after p50 " + F(Pct(revived.Select(g => g.SecondsAfterRevive), .5), 0)
+                + "; by loss: " + string.Join(" ", revived.GroupBy(g => g.FirstLossReason).Select(x => x.Key + " " + x.Count())));
         }
     }
 }

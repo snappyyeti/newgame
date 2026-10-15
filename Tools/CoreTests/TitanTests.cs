@@ -173,7 +173,7 @@ namespace Titan.Tests
                     .FirstOrDefault(c => g.Monster.CountOfColor(c) > 0 && !g.Monster.HasVisibleOfColor(c), -1);
             }
             Assert.GreaterOrEqual(hidden, 0, "no titan with a hidden-only color in 200 seeds");
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = new Cannon(hidden, 10);
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = new Cannon(hidden, 10);
             g.Tick(0.01f);
             Assert.AreEqual(LoseReason.SlotsFull, g.Lost);
         }
@@ -184,7 +184,7 @@ namespace Titan.Tests
             var g = new TitanGame(new TitanConfig { SalvageEnabled = false }, new SystemRandom(1));
             Assert.IsFalse(g.SalvageActive);
             int missing = Enumerable.Range(0, MonsterBuilder.MaxColors).First(c => !g.Monster.HasVisibleOfColor(c));
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = new Cannon(missing, 10);
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = new Cannon(missing, 10);
             g.Tick(0.01f);
             Assert.AreEqual(LoseReason.SlotsFull, g.Lost);
         }

@@ -95,7 +95,7 @@ namespace Titan.Tests
                         bool deckHasOther = pair && Enumerable.Range(0, MonsterBuilder.MaxColors).Any(c => c != others[0] && g.DeckAmmo(c) > 0);
                         Assert.IsTrue(g.Deploy(i));
                         // Free the line again so the test can keep drawing (the draw itself is what is checked).
-                        for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+                        for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
                         seedDraws++;
                         if (!pair || g.Tray[i] == null) continue;
                         bool triple = g.Tray[i].Color == others[0];
@@ -140,7 +140,7 @@ namespace Titan.Tests
             var cfg = new TitanConfig { MinApproachSeconds = 60f };
             Assert.AreEqual(1.2f, Math.Min(cfg.KnockbackMax, Math.Max(cfg.KnockbackMin, 40 * cfg.KnockbackPerCube)), 1e-5);
             var g = new TitanGame(cfg, new SeededRandom(1), 1, n => ArmTitan(40));
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
             // Let it walk a few steps, then cut right after a step.
             TickUntil(g, () => g.Distance < cfg.StartDistance - 3 * g.StepLength);
             TickUntil(g, () => g.NextStepIn > 0.95f, 0.01f);
@@ -163,7 +163,7 @@ namespace Titan.Tests
         {
             var cfg = new TitanConfig { MinApproachSeconds = 60f };
             var g = new TitanGame(cfg, new SeededRandom(2), 1, n => ArmTitan(cubes));
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
             TickUntil(g, () => g.Distance < cfg.StartDistance - 3 * g.StepLength);
             TickUntil(g, () => g.NextStepIn > 0.95f, 0.01f);
             float before = g.Distance, nextStep = g.NextStepIn;
@@ -178,7 +178,7 @@ namespace Titan.Tests
         {
             // At spawn the titan is at the start: a cut cannot push it further.
             var g = new TitanGame(new TitanConfig(), new SeededRandom(4), 1, n => ArmTitan(60));
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
             g.Line[0] = new Cannon(1, 1);
             g.Tick(0.001f);
             Assert.IsTrue(g.Events.Any(e => e.Kind == EventKind.Staggered));
@@ -204,7 +204,7 @@ namespace Titan.Tests
             var cfg = new TitanConfig { MinApproachSeconds = 20f };
             // Far away: plain bonus 200 × 1.
             var far = new TitanGame(cfg, new SeededRandom(1), 1, n => OneCube());
-            for (int s = 0; s < far.Line.Length; s++) far.Line[s] = null;
+            for (int s = 0; s < far.ActiveSlots; s++) far.Line[s] = null;
             far.Line[0] = new Cannon(0, 1);
             far.Events.Clear();
             far.Tick(0.001f);
@@ -214,7 +214,7 @@ namespace Titan.Tests
 
             // Within 15% of the wall: 200 × 1.5 = 300, and the event says so.
             var near = new TitanGame(cfg, new SeededRandom(1), 1, n => OneCube());
-            for (int s = 0; s < near.Line.Length; s++) near.Line[s] = null;
+            for (int s = 0; s < near.ActiveSlots; s++) near.Line[s] = null;
             TickUntil(near, () => near.Distance <= 0.15f * cfg.StartDistance, 0.05f);
             near.Line[0] = new Cannon(0, 1);
             near.Events.Clear();
@@ -229,7 +229,7 @@ namespace Titan.Tests
         {
             var cfg = new TitanConfig { MinApproachSeconds = 20f };
             var g = new TitanGame(cfg, new SeededRandom(1), 5, n => OneCube());
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
             TickUntil(g, () => g.Distance <= 0.15f * cfg.StartDistance, 0.05f);
             g.Line[0] = new Cannon(0, 1);
             g.Line[1] = new Cannon(3, 7); // 7 shots left on the wall at the defeat (a color the titan does not have)
@@ -294,7 +294,7 @@ namespace Titan.Tests
             for (int n = 1; n <= 15; n++)
             {
                 var g = new TitanGame(cfg, new SeededRandom(1), n, k => OneCube());
-                for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+                for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
                 g.Line[0] = new Cannon(0, 1);
                 g.Events.Clear();
                 g.Tick(0.001f);
@@ -331,7 +331,7 @@ namespace Titan.Tests
                 if (hidden < 0 || g.DeckAmmo(hidden) < 12) continue;
                 visible = Enumerable.Range(0, MonsterBuilder.MaxColors).FirstOrDefault(c => g.Monster.HasVisibleOfColor(c) && g.DeckAmmo(c) >= 4, -1);
                 if (visible < 0) continue;
-                for (int s = 0; s < g.Line.Length; s++) g.Line[s] = null;
+                for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = null;
                 g.Events.Clear();
                 return g;
             }
@@ -374,7 +374,7 @@ namespace Titan.Tests
             Park(g, hidden, 4);
             g.Line[0] = new Cannon(visible, 1);
             Assert.AreEqual(DeployBlockReason.None, g.DeployBlock(0), "a line cannon still fires: allowed");
-            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = new Cannon(hidden, 1);
+            for (int s = 0; s < g.ActiveSlots; s++) g.Line[s] = new Cannon(hidden, 1);
             Assert.AreEqual(DeployBlockReason.LineFull, g.DeployBlock(0));
             g.Tray[2] = null;
             Assert.AreEqual(DeployBlockReason.NotAvailable, g.DeployBlock(2));

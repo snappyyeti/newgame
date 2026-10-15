@@ -23,7 +23,7 @@ namespace Titan.Tests
         {
             if (g.IsOver) return null;
             var m = g.Monster;
-            for (int s = 0; s < g.Line.Length; s++)
+            for (int s = 0; s < g.ActiveSlots; s++)
                 if (g.Line[s] != null && m.CountOfColor(g.Line[s].Color) == 0)
                     return "line slot " + s + " holds a dead " + g.Line[s];
             for (int color = 0; color < MonsterBuilder.MaxColors; color++)
