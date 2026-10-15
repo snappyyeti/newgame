@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../../Assets/SplashSort/Scripts/Core/**/*.cs" />
+    <Compile Include="../../Assets/Titan/Scripts/Core/**/*.cs" />
     <Compile Include="*.cs" />
   </ItemGroup>
 

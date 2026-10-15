@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
-namespace SplashSort.EditorTools
+namespace Titan.EditorTools
 {
     /// <summary>
     /// Prepares a freshly downloaded copy of the project so it can be played without manual setup:
@@ -16,10 +16,10 @@ namespace SplashSort.EditorTools
     [InitializeOnLoad]
     static class ProjectSetup
     {
-        const string ProductName = "Splash Sort";
+        const string ProductName = "Titanul din Cuburi";
         const string MainScene = "Assets/Scenes/Main.unity";
-        const string OpenedKey = "SplashSort.MainSceneOpened";
-        const string AskedRestartKey = "SplashSort.AskedRestart";
+        const string OpenedKey = "Titan.MainSceneOpened";
+        const string AskedRestartKey = "Titan.AskedRestart";
 
         static ProjectSetup()
         {
@@ -71,7 +71,7 @@ namespace SplashSort.EditorTools
             handler.intValue = 0;
             settings.ApplyModifiedPropertiesWithoutUndo();
             AssetDatabase.SaveAssets();
-            Debug.Log("[Splash Sort] Active Input Handling trecut pe Input Manager (Old). Repornește Unity ca să se aplice.");
+            Debug.Log("[Titan] Active Input Handling trecut pe Input Manager (Old). Repornește Unity ca să se aplice.");
             return true;
         }
 
@@ -93,7 +93,7 @@ namespace SplashSort.EditorTools
             PlayerSettings.SetGraphicsAPIs(BuildTarget.StandaloneWindows64, new[] { GraphicsDeviceType.Direct3D11 });
 
             AssetDatabase.SaveAssets();
-            Debug.Log("[Splash Sort] Player Settings pregătite: portret, fereastră 540×1170 pe Windows, Direct3D 11.");
+            Debug.Log("[Titan] Player Settings pregătite: portret, fereastră 540×1170 pe Windows, Direct3D 11.");
         }
     }
 }

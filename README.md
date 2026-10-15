@@ -1,55 +1,52 @@
-# Splash Sort: prototip de test (cuburi gri)
+# Titanul din Cuburi
 
-Puzzle de sortare: tragi colaci cu înotători colorați în 12 piscine, iar stivele vecine de aceeași culoare se unesc singure. 10 de aceeași culoare în vârf fac SPLASH.
+Un titan uriaș făcut din cuburi colorate pășește spre zidul tău. Jos ai 3 tunuri; atingi unul și el urcă pe zid, apoi trage singur în cuburile de culoarea lui. Rupi brațe și capete, doborî titanul, și vine altul, mai mare. Infinit.
 
 ## Cum îl deschizi
 
 1. Pe GitHub: **Code → Download ZIP**, apoi dezarhivezi într-un folder **nou**. Nu peste un proiect vechi.
 2. Unity Hub → **Add** → **Add project from disk** → folderul dezarhivat → Unity `6000.6.3f1` (merge orice Unity 6).
-3. La prima deschidere, scriptul `Assets/SplashSort/Editor/ProjectSetup.cs` deschide scena `Main`, setează portret, Direct3D 11 și input-ul clasic (Input Manager). Dacă te întreabă dacă repornește, apasă **Repornește**.
+3. La prima deschidere, `Assets/Titan/Editor/ProjectSetup.cs` deschide scena `Main`, setează portret, Direct3D 11 și input-ul clasic. Dacă te întreabă dacă repornește, apasă **Repornește**.
 4. În **Game** alege o rezoluție portret (de exemplu 1080×2340) și apasă **Play**.
 
-Control: apeși pe un colac de jos, îl tragi peste o piscină goală (se face verde) și dai drumul.
+Control: atingi / dai click pe un tun de jos.
 
 ## Regulile
 
-- **Tabla:** 12 piscine, 3 coloane × 4 rânduri. Vecinii sunt sus, jos, stânga și dreapta.
-- **Colacii:** jos sunt 3 colaci la alegere; după ce i-ai pus pe toți 3, vin alți 3. Un colac are 2–6 înotători și 1–3 culori, afișați exact cum vor sta în stivă. Se pun doar pe piscine goale.
-- **Unirea automată**, după fiecare plasare:
-  1. Se caută două piscine vecine cu aceeași culoare în vârf.
-  2. Șirul de vârf trece de pe stiva cu șirul mai scurt pe cea cu șirul mai lung. La egalitate, trece pe piscina unde ai pus colacul.
-  3. Se repetă până nu mai există nicio pereche.
-  4. Orice stivă cu 10+ de aceeași culoare în vârf face SPLASH și înotătorii dispar.
-  5. Dacă după SPLASH apar culori noi în vârf, se reia de la 1. Asta e cascada.
-- **Pierzi** când nu mai e nicio piscină goală.
-- **Scor:** 10 puncte × înotătorii scoși × pasul cascadei (×1, ×2, ×3…).
-- **Culori:** 3 la început, 4 de la 500 de puncte, 5 de la 1.500, 6 de la 3.000.
+1. **Titanul.** Pășește spre zid; ajunge la el în 60–70 s la primul titan. Bara de sus arată cât de aproape e.
+2. **Tunurile.** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când le-ai folosit pe toate 3, vin alte 3 (ca la Block Blast).
+3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri**. Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul.
+4. **Așteptarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui.
+5. **Combo.** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul au culoarea lor. Dacă le distrugi, bucata se rupe, cade cu fizică și toate cuburile din ea îți dau puncte.
+6. **Pierzi** când titanul atinge zidul sau când toate cele 5 locuri sunt pline cu tunuri care n-au în ce trage.
 
-### Cazuri pe care regulile nu le acoperă
+**Scor:** 10 puncte pe cub lovit, 25 pe fiecare cub dintr-o bucată ruptă, 200 × numărul titanului când îl dobori, plus 2 pe fiecare lovitură rămasă în tunuri.
 
-- **Ordinea perechilor.** Întâi se fac unirile *în* piscina care tocmai s-a schimbat, ca să adune tot ce e în jur. Apoi celelalte perechi care ating piscina aceea, iar la urmă restul. În fiecare grup are prioritate perechea cu cei mai mulți înotători. Exemplu: pui `22` între `22` și `222`, iar toți cei 7 ajung împreună.
-- **Egalitate fără piscina pusă** (în timpul cascadei): șirul trece pe piscina schimbată cel mai recent, altfel pe cea mai de sus/din stânga.
-- **Mai multe stive cu 10+ în același timp:** fac SPLASH toate odată, ca un singur pas de cascadă.
+### Alegeri făcute pentru prototip
 
-## Feedback (obligatoriu chiar și pe gri)
+- **„Vizibil”** = cubul din față al fiecărei coloane (ce vezi tu). Când îl spargi, se vede cel din spate, care poate avea altă culoare. Trunchiul are o culoare ascunsă înăuntru.
+- **Ordinea țintelor:** fiecare tun trage întâi în cel mai înalt cub vizibil de culoarea lui, apoi în cel mai apropiat de el.
+- **Ce se rupe:** corpul și picioarele stau pe pământ chiar dacă sunt ciuruite. Se rup doar brațele și capul. Altfel, tunul de culoarea picioarelor tăia șoldurile și cădea tot titanul în câteva secunde.
+- **Muniția** fiecărui titan acoperă exact cuburile lui, împărțită în tunuri de 10–30. În 65% din cazuri, tunul nou are o culoare care se vede acum, iar în rest e la întâmplare. Nu există alt „regizor”.
 
-- **Săritura înotătorilor:** 0,15 s fiecare, cu un mic decalaj între ei și un „tic” la fiecare săritură.
-- **SPLASH:** zguduirea ecranului (mai tare la fiecare pas de cascadă) și particule în culoarea înotătorilor.
-- **Sunet:** urcă un ton întreg la fiecare pas de cascadă (Do5, Re5, Mi5…). E generat din cod, fără fișiere audio.
-- **Scorul:** cifrele sar la fiecare SPLASH, iar „+puncte” și „CASCADĂ x2” ies din piscină.
+## Titanii
 
-## Ce nu e în test
+| Titan | Cuburi | Culori | Timp până la zid |
+|---|---|---|---|
+| 1 | 142 | 3 | 61 s |
+| 2 | 160 | 3 | 62 s |
+| 3 | 206 | 4 | 69 s |
+| 4 | 477 | 4 | 124 s |
+| 7 | 996 | 6 | 201 s |
 
-Regizorul, reclamele, revive-ul și grafica de aquapark. Colacii vin complet aleatori.
+## Simulare (300 de jocuri, un „om” care atinge un tun la fiecare 0,8–1,6 s)
 
-## Simulare (400 de jocuri per bot)
+| Jucător | Titani doborâți (median) | Durata rundei | Pierde la |
+|---|---|---|---|
+| alege tunuri la întâmplare | 2 | ~40 s | locuri pline (aproape mereu) |
+| alege tunuri cu culori vizibile | 2 | ~75 s | zid (2/3), locuri pline (1/3) |
 
-| Bot | Scor median | p10–p90 | Colaci puși | SPLASH-uri | Cascade |
-|---|---|---|---|---|---|
-| aleatoriu | 330 | 0–800 | 23 | 1.180 | 22 |
-| lacom | 1.260 | 610–2.030 | 45 | 4.254 | 75 |
-
-Cascadele sunt rare: sub 2% din SPLASH-uri continuă cu un al doilea pas. De urmărit la test dacă oamenii le simt ca pe o recompensă reală.
+Primii 1–2 titani se pot doborî, iar al 3-lea (4 culori, mai adânc) e primul zid real. Numerele sunt în `TitanConfig` și se reglează după test.
 
 ## Teste
 
@@ -57,13 +54,13 @@ Cascadele sunt rare: sub 2% din SPLASH-uri continuă cu un al doilea pas. De urm
 dotnet test Tools/CoreTests
 ```
 
-Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze (ar avea nevoie de pachetul Test Framework).
+Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze.
 
 ## Structură
 
 ```
-Assets/SplashSort/Scripts/Core   logica pură (fără UnityEngine): tabla, colacii, unirea, SPLASH, cascada, scorul
-Assets/SplashSort/Scripts/Game   Unity: grila din primitive, drag & drop, animații, sunet, zguduire, particule, HUD
-Assets/SplashSort/Editor         pregătirea automată a proiectului în editor
-Tools/CoreTests                  testele NUnit ale logicii, rulate cu dotnet în afara Unity
+Assets/Titan/Scripts/Core   logica pură: titanul din voxeli, rupturile, tunurile, linia de tragere, simularea
+Assets/Titan/Scripts/Game   Unity: arena, titanul, tunurile, proiectilele, bucățile cu fizică, sunete, HUD
+Assets/Titan/Editor         pregătirea automată a proiectului în editor
+Tools/CoreTests             testele NUnit ale logicii, rulate cu dotnet
 ```

@@ -1,8 +1,8 @@
 {
-    "name": "SplashSort.Game",
-    "rootNamespace": "SplashSort.Game",
+    "name": "Titan.Game",
+    "rootNamespace": "Titan.Game",
     "references": [
-        "SplashSort.Core"
+        "Titan.Core"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,0 +1,140 @@
+using System;
+using System.Collections.Generic;
+
+namespace Titan.Core
+{
+    public interface IRandom
+    {
+        /// <summary>Integer in [min, maxExclusive).</summary>
+        int Range(int min, int maxExclusive);
+        /// <summary>Float in [0, 1).</summary>
+        float Value();
+    }
+
+    public sealed class SystemRandom : IRandom
+    {
+        readonly Random random;
+        public SystemRandom() { random = new Random(); }
+        public SystemRandom(int seed) { random = new Random(seed); }
+        public int Range(int min, int maxExclusive) => random.Next(min, maxExclusive);
+        public float Value() => (float)random.NextDouble();
+    }
+
+    /// <summary>
+    /// Builds a humanoid titan out of boxes: boots, legs, a torso with a hidden core, shoulders, arms, a neck and a head.
+    /// Legs and torso are the anchored body. Shoulders and neck are thin joints in their own color:
+    /// shoot them away and the arm or the head breaks off.
+    /// Every level is bigger, deeper and uses more colors.
+    /// </summary>
+    public static class MonsterBuilder
+    {
+        public const int MaxColors = 6;
+
+        public static int ColorsForLevel(int level) => Math.Min(3 + (level - 1) / 2, MaxColors);
+
+        public static Monster Build(int level, IRandom rng)
+        {
+            level = Math.Max(1, level);
+            int colorCount = ColorsForLevel(level);
+            var palette = new List<int>();
+            for (int c = 0; c < MaxColors; c++) palette.Add(c);
+            Shuffle(palette, rng);
+            palette = palette.GetRange(0, colorCount);
+
+            int depth = Math.Min(2 + (level - 1) / 3, 4);
+            int legH = 3 + (level - 1) / 3;
+            int legW = level >= 4 ? 3 : 2;
+            int gap = level >= 3 ? 3 : 1;              // odd, so the titan stays symmetric
+            int half = Math.Max(legW + gap / 2, 1 + (level + 1) / 2);
+            half = Math.Min(half, 7);
+            int torsoH = Math.Min(4 + level, 11);
+            int armW = 2;
+            int armH = Math.Min(torsoH - 1 + (level - 1) / 3, torsoH + legH - 2);
+            int headHalf = Math.Min(2 + (level - 1) / 3, half);
+            int headH = Math.Min(3 + (level - 1) / 3, 6);
+            int neckHalf = level >= 6 ? 1 : 0;
+
+            int boot = Pick(palette, rng);
+            int leg = Pick(palette, rng, boot);
+            int torso = Pick(palette, rng, leg);
+            int core = Pick(palette, rng, torso);
+            int belt = Pick(palette, rng, torso);
+            int joint = Pick(palette, rng, torso);
+            int arm = Pick(palette, rng, joint);
+            int hand = Pick(palette, rng, arm);
+            int neck = Pick(palette, rng, torso);
+            int head = Pick(palette, rng, neck);
+            int eye = Pick(palette, rng, head);
+
+            var m = new Monster();
+
+            // Legs, with boots on the ground row.
+            int legInner = gap / 2 + 1;
+            for (int y = 0; y < legH; y++)
+                for (int i = 0; i < legW; i++)
+                    for (int z = 0; z < depth; z++)
+                    {
+                        int color = y == 0 ? boot : leg;
+                        m.Set(new Int3(-(legInner + i), y, z), color, true);
+                        m.Set(new Int3(legInner + i, y, z), color, true);
+                    }
+
+            // Torso: a colored front with a belt, and a different color hidden inside.
+            int torsoBottom = legH;
+            int torsoTop = legH + torsoH - 1;
+            int beltY = torsoBottom + torsoH / 3;
+            for (int y = torsoBottom; y <= torsoTop; y++)
+                for (int x = -half; x <= half; x++)
+                    for (int z = 0; z < depth; z++)
+                        m.Set(new Int3(x, y, z), z == 0 ? (y == beltY ? belt : torso) : core, true);
+
+            // Shoulders (the only link between torso and arm) and arms hanging down, hands at the bottom.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                for (int z = 0; z < depth; z++) m.Set(new Int3(side * (half + 1), torsoTop, z), joint);
+                int armBottom = torsoTop - armH + 1;
+                for (int y = armBottom; y <= torsoTop; y++)
+                    for (int i = 0; i < armW; i++)
+                        for (int z = 0; z < depth; z++)
+                            m.Set(new Int3(side * (half + 2 + i), y, z), y == armBottom ? hand : arm);
+            }
+
+            // Neck (the only link to the head) and the head with two eyes on its face.
+            int neckY = torsoTop + 1;
+            for (int x = -neckHalf; x <= neckHalf; x++)
+                for (int z = 0; z < depth; z++)
+                    m.Set(new Int3(x, neckY, z), neck);
+            int headBottom = neckY + 1;
+            int headTop = headBottom + headH - 1;
+            for (int y = headBottom; y <= headTop; y++)
+                for (int x = -headHalf; x <= headHalf; x++)
+                    for (int z = 0; z < depth; z++)
+                    {
+                        bool isEye = z == 0 && y == headTop - 1 && Math.Abs(x) == Math.Max(1, headHalf - 1);
+                        m.Set(new Int3(x, y, z), isEye ? eye : head);
+                    }
+
+            return m;
+        }
+
+        static int Pick(List<int> palette, IRandom rng, int avoid = -1)
+        {
+            if (palette.Count == 1) return palette[0];
+            int c;
+            do c = palette[rng.Range(0, palette.Count)];
+            while (c == avoid);
+            return c;
+        }
+
+        static void Shuffle<T>(List<T> list, IRandom rng)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = rng.Range(0, i + 1);
+                var t = list[i];
+                list[i] = list[j];
+                list[j] = t;
+            }
+        }
+    }
+}

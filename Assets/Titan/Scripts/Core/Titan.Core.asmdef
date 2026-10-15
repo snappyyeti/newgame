@@ -1,6 +1,6 @@
 {
-    "name": "SplashSort.Core",
-    "rootNamespace": "SplashSort.Core",
+    "name": "Titan.Core",
+    "rootNamespace": "Titan.Core",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,6 +1,6 @@
 {
-    "name": "SplashSort.Editor",
-    "rootNamespace": "SplashSort.EditorTools",
+    "name": "Titan.Editor",
+    "rootNamespace": "Titan.EditorTools",
     "references": [],
     "includePlatforms": [
         "Editor"
