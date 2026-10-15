@@ -8,8 +8,12 @@ namespace Titan.Game
     {
         AudioSource source;
         AudioSource highSource; // pitch 1.5: salvage reuses the deploy sound, higher
-        AudioClip shot, hit, step, crash, roar, fanfare, lose, deploy;
+        /// <summary>Round-robin sources for one-shots at another pitch (a source's pitch applies to everything it plays).</summary>
+        AudioSource[] pitched;
+        int nextPitched;
+        AudioClip shot, hit, step, crash, roar, fanfare, lose, deploy, thump;
         float lastShot, lastHit;
+        float nextBeat = -1f;
 
         Camera cam;
         Vector3 cameraBase;
@@ -34,6 +38,12 @@ namespace Titan.Game
             highSource = gameObject.AddComponent<AudioSource>();
             highSource.playOnAwake = false;
             highSource.pitch = 1.5f;
+            pitched = new AudioSource[4];
+            for (int i = 0; i < pitched.Length; i++)
+            {
+                pitched[i] = gameObject.AddComponent<AudioSource>();
+                pitched[i].playOnAwake = false;
+            }
 
             shot = Synth("shot", 0.09f, (t, k) => Square(Mathf.Lerp(1100f, 450f, k), t) * (1f - k) * 0.35f);
             hit = Synth("hit", 0.07f, (t, k) => Noise() * (1f - k) * 0.5f);
@@ -49,6 +59,7 @@ namespace Titan.Game
                 return Square(notes[i], t) * 0.25f * (1f - local * 0.5f);
             });
             lose = Synth("lose", 1.0f, (t, k) => Saw(Mathf.Lerp(220f, 70f, k), t) * (1f - k) * 0.4f);
+            thump = Synth("thump", 0.16f, (t, k) => Mathf.Sin(2f * Mathf.PI * 55f * t) * Mathf.Exp(-t * 22f));
 
             var probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cubeMesh = probe.GetComponent<MeshFilter>().sharedMesh;
@@ -72,6 +83,45 @@ namespace Titan.Game
         }
 
         public void Deploy() => source.PlayOneShot(deploy, 0.6f);
+        /// <summary>A new cannon rises into a tray slot (conveyor): the deploy sound at pitch 1.2, quieter.</summary>
+        public void TrayRise() => PlayPitched(deploy, 1.2f, 0.35f);
+        /// <summary>"TITAN RAPID!": the deploy sound at pitch 1.4.</summary>
+        public void SprintCue() => PlayPitched(deploy, 1.4f, 0.6f);
+        /// <summary>"LA MUSTAȚĂ!": the fanfare at pitch 1.15.</summary>
+        public void NearMissFanfare() => PlayPitched(fanfare, 1.15f, 0.75f);
+
+        void PlayPitched(AudioClip clip, float pitch, float volume)
+        {
+            var s = pitched[nextPitched];
+            nextPitched = (nextPitched + 1) % pitched.Length;
+            s.pitch = pitch;
+            s.PlayOneShot(clip, volume);
+        }
+
+        /// <summary>
+        /// Call every frame with the titan's danger (0 at spawn, 1 at the wall). From 0.75 on: two 55 Hz thumps 0.12 s
+        /// apart every 0.8 s, volume 0.4 rising to 0.7 at 0.95. Below 0.75 (or with a negative value) it stops.
+        /// </summary>
+        public void Heartbeat(float danger)
+        {
+            if (danger < 0.75f)
+            {
+                nextBeat = -1f;
+                return;
+            }
+            if (nextBeat < 0f) nextBeat = Time.time;
+            if (Time.time < nextBeat) return;
+            nextBeat = Time.time + 0.8f;
+            float volume = Mathf.Lerp(0.4f, 0.7f, Mathf.InverseLerp(0.75f, 0.95f, danger));
+            source.PlayOneShot(thump, volume);
+            StartCoroutine(SecondThump(volume));
+        }
+
+        System.Collections.IEnumerator SecondThump(float volume)
+        {
+            yield return new WaitForSeconds(0.12f);
+            source.PlayOneShot(thump, volume);
+        }
         /// <summary>Salvage (a cannon flies off, a tray label counts down): the deploy sound at pitch 1.5.</summary>
         public void Salvage() => highSource.PlayOneShot(deploy, 0.55f);
         public void Step(float strength) { source.PlayOneShot(step, 0.5f + 0.4f * strength); Shake(0.04f + 0.08f * strength, 0.2f); }
@@ -82,6 +132,7 @@ namespace Titan.Game
 
         public void Shake(float amplitude, float duration)
         {
+            if (Settings.ReducedFx) return;
             float current = shakeAmplitude * (shakeLeft / Mathf.Max(0.0001f, shakeDuration));
             if (amplitude < current) return;
             shakeAmplitude = amplitude;

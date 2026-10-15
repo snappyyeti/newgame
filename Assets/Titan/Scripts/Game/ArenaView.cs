@@ -43,8 +43,14 @@ namespace Titan.Game
 
         Transform monsterRoot;
         readonly Dictionary<Int3, Transform> cubes = new Dictionary<Int3, Transform>();
-        float monsterZ;
         int stepCount;
+
+        // Titan pose: one tween drives the current titan's Z, bob and lean (steps and staggers never fight).
+        float riseStart, riseDepth;
+        float zShown, zFrom, zTo, zStart, zDuration;
+        bool zStagger;
+        float sway;
+        bool poseFrozen;
 
         Vector3[] slotPos;
         Vector3[] trayPos;
@@ -56,7 +62,16 @@ namespace Titan.Game
         bool cameraReady;
 
         public event Action<Vector3, string> Popup;
-        public event Action<string> Banner;
+        /// <summary>Text, color, seconds. The HUD queues these behind the banner on screen.</summary>
+        public event Action<string, Color, float> Banner;
+
+        public static readonly Color BannerWhite = Color.white;
+        public static readonly Color BannerGold = new Color(1f, 0.82f, 0.2f);
+        public static readonly Color BannerGreen = new Color(0.45f, 1f, 0.45f);
+        public static readonly Color BannerRed = new Color(1f, 0.35f, 0.3f);
+
+        /// <summary>The "pachet gol" ring shown on a tray slot the empty deck could not refill.</summary>
+        Transform[] emptyRings;
 
         sealed class CannonView
         {
@@ -135,13 +150,35 @@ namespace Titan.Game
 
             trayPos = new Vector3[game.Config.TraySize];
             tray = new CannonView[trayPos.Length];
+            emptyRings = new Transform[trayPos.Length];
+            var ringMat = MakeMaterial(new Color(0.12f, 0.12f, 0.14f));
             for (int i = 0; i < trayPos.Length; i++)
             {
                 trayPos[i] = new Vector3((i - (trayPos.Length - 1) / 2f) * TraySpacing, 0f, TrayZ);
                 var pad = Primitive(PrimitiveType.Cylinder, "TrayPad", transform, MakeMaterial(new Color(0.42f, 0.36f, 0.30f)), false);
                 pad.position = trayPos[i] + Vector3.up * 0.03f;
                 pad.localScale = new Vector3(2.4f, 0.05f, 2.4f);
+                emptyRings[i] = BuildRing(trayPos[i], ringMat);
             }
+        }
+
+        /// <summary>A dark ring of 16 blocks lying on a tray pad.</summary>
+        Transform BuildRing(Vector3 center, Material mat)
+        {
+            var root = new GameObject("EmptyDeckRing").transform;
+            root.SetParent(transform, false);
+            root.position = center + Vector3.up * 0.1f;
+            const int n = 16;
+            for (int k = 0; k < n; k++)
+            {
+                float a = k * Mathf.PI * 2f / n;
+                var b = Primitive(PrimitiveType.Cube, "RingBlock", root, mat, false);
+                b.localPosition = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.8f;
+                b.localRotation = Quaternion.Euler(0f, -a * Mathf.Rad2Deg, 0f);
+                b.localScale = new Vector3(0.18f, 0.08f, 0.34f);
+            }
+            root.gameObject.SetActive(false);
+            return root;
         }
 
         void BuildArena()
@@ -217,9 +254,78 @@ namespace Titan.Game
 
         void Update()
         {
+            if (game == null) return;
+            UpdateTitanPose();
+            for (int i = 0; i < emptyRings.Length; i++)
+            {
+                bool empty = game.Tray[i] == null && tray[i] == null && !DyingAt(i);
+                if (emptyRings[i].gameObject.activeSelf != empty) emptyRings[i].gameObject.SetActive(empty);
+            }
             if (!cameraReady) return;
             cameraBase = Vector3.Lerp(cameraBase, cameraTarget, 1f - Mathf.Exp(-Time.deltaTime * 2f));
             fx.SetCameraBase(cameraBase);
+        }
+
+        bool DyingAt(int i)
+        {
+            foreach (var d in dyingTray)
+                if (d.Root != null && (d.Root.position - trayPos[i]).sqrMagnitude < 0.01f) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// The current titan's pose: it rises out of the ground for 1 s after spawning, then each step is a 0.4 s
+        /// smoothstep with a bob and a sideways sway, and each stagger a 0.3 s ease-out back with a 10° back-lean.
+        /// </summary>
+        void UpdateTitanPose()
+        {
+            if (monsterRoot == null || poseFrozen) return;
+            float now = Time.time;
+            float y = 0f;
+            float r = Mathf.Clamp01((now - riseStart) / 1.0f);
+            if (r < 1f) y = Mathf.Lerp(-riseDepth, 0f, 1f - (1f - r) * (1f - r));
+            float k = zDuration > 0f ? Mathf.Clamp01((now - zStart) / zDuration) : 1f;
+            float ease = zStagger ? 1f - (1f - k) * (1f - k) : k * k * (3f - 2f * k);
+            zShown = Mathf.Lerp(zFrom, zTo, ease);
+            var rot = Quaternion.identity;
+            if (k < 1f)
+            {
+                float arc = Mathf.Sin(k * Mathf.PI);
+                if (zStagger) rot = Quaternion.Euler(10f * arc, 0f, 0f); // leans back, away from the wall
+                else
+                {
+                    y += arc * 0.35f;
+                    rot = Quaternion.Euler(0f, 0f, arc * sway);
+                }
+            }
+            monsterRoot.position = new Vector3(0f, y, zShown);
+            monsterRoot.rotation = rot;
+        }
+
+        void MoveTitanTo(float distance, float duration, bool stagger)
+        {
+            zFrom = zShown;
+            zTo = distance;
+            zStart = Time.time;
+            zDuration = duration;
+            zStagger = stagger;
+        }
+
+        /// <summary>Screen position (GUI coordinates) of slot s's pip: centered on the wall's front face under the slot.</summary>
+        public Vector2? SlotPip(int s)
+        {
+            var p = cam.WorldToScreenPoint(new Vector3(slotPos[s].x, WallTop * 0.5f, -1.0f));
+            if (p.z <= 0) return null;
+            return new Vector2(p.x, Screen.height - p.y);
+        }
+
+        /// <summary>Screen position of the "pachet gol" label of tray slot i, or null when the slot holds a cannon.</summary>
+        public Vector2? EmptyTrayLabel(int i)
+        {
+            if (!emptyRings[i].gameObject.activeSelf) return null;
+            var p = cam.WorldToScreenPoint(trayPos[i] + Vector3.up * 0.9f);
+            if (p.z <= 0) return null;
+            return new Vector2(p.x, Screen.height - p.y);
         }
 
         // ---------------------------------------------------------------- input and labels
@@ -302,8 +408,12 @@ namespace Titan.Game
         {
             switch (e.Kind)
             {
-                case EventKind.TitanSpawned: SpawnTitan(e.Level); break;
-                case EventKind.TrayRefilled: RebuildTray(); break;
+                case EventKind.TitanSpawned: SpawnTitan(e.Level, e.Role); break;
+                case EventKind.TrayRefilled:
+                    if (e.TraySlot >= 0) RefillSlot(e.TraySlot);
+                    else RebuildTray();
+                    break;
+                case EventKind.Staggered: Stagger(e); break;
                 case EventKind.Deployed: Deploy(e.TraySlot, e.Slot); break;
                 case EventKind.Shot: Shoot(e); break;
                 case EventKind.PieceFell:
@@ -315,13 +425,13 @@ namespace Titan.Game
                     else if (e.TraySlot >= 0) SalvageTray(e);
                     break;
                 case EventKind.CannonEmpty: StartCoroutine(RetireCannon(e.Slot)); break;
-                case EventKind.Step: StartCoroutine(StepTo(e.Distance)); break;
+                case EventKind.Step: StepTo(e.Distance); break;
                 case EventKind.TitanDefeated: Defeated(e); break;
                 case EventKind.GameOver: StartCoroutine(GameOver(e.Reason)); break;
             }
         }
 
-        void SpawnTitan(int level)
+        void SpawnTitan(int level, TitanRole role)
         {
             if (monsterRoot != null) Destroy(monsterRoot.gameObject, 1.5f);
             cubes.Clear();
@@ -333,8 +443,12 @@ namespace Titan.Game
 
             monsterRoot = new GameObject("Titan" + level).transform;
             monsterRoot.SetParent(transform, false);
-            monsterZ = game.Distance;
-            monsterRoot.position = new Vector3(0, 0, monsterZ);
+            zShown = zFrom = zTo = game.Distance;
+            zDuration = 0f;
+            poseFrozen = false;
+            riseStart = Time.time;
+            riseDepth = game.Monster.MaxY + 2f;
+            monsterRoot.position = new Vector3(0, -riseDepth, zShown);
             var rng = new System.Random(level * 7919);
             foreach (var kv in game.Monster.Cubes)
             {
@@ -349,9 +463,30 @@ namespace Titan.Game
             }
             stepCount = 0;
             FitCamera(level == 1);
-            StartCoroutine(Rise(monsterRoot, game.Monster.MaxY + 2f));
-            fx.Roar();
-            Banner?.Invoke("TITANUL #" + level);
+            switch (role)
+            {
+                case TitanRole.Sprint:
+                    fx.SprintCue();
+                    Banner?.Invoke("TITAN RAPID!", BannerGreen, 1.2f);
+                    break;
+                case TitanRole.Boss:
+                    fx.Roar();
+                    fx.Shake(0.3f, 0.6f);
+                    Banner?.Invoke("TITAN GIGANT!", BannerRed, 1.8f);
+                    break;
+                default:
+                    fx.Roar();
+                    Banner?.Invoke("TITANUL #" + level, BannerWhite, 1.4f);
+                    break;
+            }
+        }
+
+        /// <summary>A cut pushed the titan back: it staggers to its new Z with a back-lean; a big piece makes it roar.</summary>
+        void Stagger(GameEvent e)
+        {
+            MoveTitanTo(e.Distance, 0.3f, true);
+            if (e.Piece != null && e.Piece.Count >= 20) fx.Roar();
+            fx.Shake(0.15f, 0.25f);
         }
 
         /// <summary>The "cusătură" (stitch): a thin white band around a joint cube. The cube keeps its color.</summary>
@@ -405,6 +540,46 @@ namespace Titan.Game
                 tray[i].ShowFrom = Time.time + wait;
                 StartCoroutine(PopInLater(tray[i].Root, TrayScale, 0.2f + 0.06f * i, wait));
             }
+        }
+
+        /// <summary>Conveyor refill of one slot: the new cannon rises from 2.5 units below its pad in 0.18 s.</summary>
+        void RefillSlot(int i)
+        {
+            if (tray[i] != null && tray[i].Root != null) Destroy(tray[i].Root.gameObject);
+            tray[i] = null;
+            var data = game.Tray[i];
+            if (data == null) return; // the empty deck: the ring and "pachet gol" show instead
+            var c = MakeCannon(data.Color, trayPos[i] + Vector3.down * 2.5f, TrayScale);
+            tray[i] = c;
+            SetLabel(c, data.Ammo);
+            float wait = 0f;
+            foreach (var d in dyingTray)
+                if (d.Root != null && (d.Root.position - trayPos[i]).sqrMagnitude < 0.01f)
+                    wait = Mathf.Max(wait, d.LabelStart + SalvageCountTime + 0.25f - Time.time);
+            c.ShowFrom = Time.time + wait;
+            StartCoroutine(RiseInto(c.Root, trayPos[i], 0.18f, wait));
+        }
+
+        IEnumerator RiseInto(Transform t, Vector3 target, float duration, float delay)
+        {
+            if (delay > 0f)
+            {
+                t.localScale = Vector3.zero;
+                yield return new WaitForSeconds(delay);
+                if (t == null) yield break;
+                t.localScale = Vector3.one * TrayScale;
+            }
+            fx.TrayRise();
+            var start = t.position;
+            float time = 0f;
+            while (time < duration && t != null)
+            {
+                time += Time.deltaTime;
+                float k = Mathf.Clamp01(time / duration);
+                t.position = Vector3.Lerp(start, target, 1f - (1f - k) * (1f - k));
+                yield return null;
+            }
+            if (t != null) t.position = target;
         }
 
         static void SetLabel(CannonView c, int ammo)
@@ -580,37 +755,27 @@ namespace Titan.Game
             if (c.Root != null) StartCoroutine(ShrinkAway(c.Root, 0.25f));
         }
 
-        IEnumerator StepTo(float distance)
+        void StepTo(float distance)
         {
-            if (monsterRoot == null) yield break;
-            var root = monsterRoot;
-            float from = monsterZ;
-            monsterZ = distance;
+            if (monsterRoot == null) return;
             stepCount++;
-            float sway = (stepCount & 1) == 0 ? 2.5f : -2.5f;
-            float danger = 1f - distance / game.Config.StartDistance;
-            fx.Step(danger);
-            float t = 0f;
-            while (t < StepTime && root != null)
-            {
-                t += Time.deltaTime;
-                float k = Mathf.Clamp01(t / StepTime);
-                float ease = k * k * (3f - 2f * k);
-                root.position = new Vector3(0, Mathf.Sin(k * Mathf.PI) * 0.35f, Mathf.Lerp(from, distance, ease));
-                root.rotation = Quaternion.Euler(0, 0, Mathf.Sin(k * Mathf.PI) * sway);
-                yield return null;
-            }
-            if (root != null)
-            {
-                root.position = new Vector3(0, 0, distance);
-                root.rotation = Quaternion.identity;
-            }
+            sway = (stepCount & 1) == 0 ? 2.5f : -2.5f;
+            fx.Step(1f - distance / game.Config.StartDistance);
+            MoveTitanTo(distance, StepTime, false);
         }
 
         void Defeated(GameEvent e)
         {
-            fx.Fanfare();
-            Banner?.Invoke("TITAN DOBORÂT!  +" + e.Points);
+            if (e.NearMiss)
+            {
+                fx.NearMissFanfare();
+                Banner?.Invoke("LA MUSTAȚĂ!  x" + game.Config.NearMissBonusMult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), BannerGold, 1.6f);
+            }
+            else
+            {
+                fx.Fanfare();
+                Banner?.Invoke("TITAN DOBORÂT!  +" + e.Points, BannerWhite, 1.4f);
+            }
         }
 
         IEnumerator GameOver(LoseReason reason)
@@ -618,6 +783,7 @@ namespace Titan.Game
             fx.Lose();
             if (reason != LoseReason.WallReached || monsterRoot == null) yield break;
             // The titan smashes into the wall.
+            poseFrozen = true;
             var root = monsterRoot;
             float t = 0f;
             var start = root.position;
@@ -693,22 +859,6 @@ namespace Titan.Game
                 yield return null;
             }
             if (pivot != null) pivot.localPosition = rest;
-        }
-
-        static IEnumerator Rise(Transform root, float depth)
-        {
-            float time = 0f;
-            const float duration = 1.0f;
-            var end = root.position;
-            while (time < duration && root != null)
-            {
-                time += Time.deltaTime;
-                float k = Mathf.Clamp01(time / duration);
-                float ease = 1f - (1f - k) * (1f - k);
-                root.position = new Vector3(end.x, Mathf.Lerp(-depth, 0f, ease), root.position.z);
-                yield return null;
-            }
-            if (root != null) root.position = new Vector3(end.x, 0f, root.position.z);
         }
 
         static IEnumerator PopIn(Transform t, float scale, float duration)
