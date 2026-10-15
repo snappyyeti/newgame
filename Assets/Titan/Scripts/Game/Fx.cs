@@ -7,6 +7,7 @@ namespace Titan.Game
     public sealed class Fx : MonoBehaviour
     {
         AudioSource source;
+        AudioSource highSource; // pitch 1.5: salvage reuses the deploy sound, higher
         AudioClip shot, hit, step, crash, roar, fanfare, lose, deploy;
         float lastShot, lastHit;
 
@@ -30,6 +31,9 @@ namespace Titan.Game
             cameraBase = cam.transform.position;
             source = gameObject.AddComponent<AudioSource>();
             source.playOnAwake = false;
+            highSource = gameObject.AddComponent<AudioSource>();
+            highSource.playOnAwake = false;
+            highSource.pitch = 1.5f;
 
             shot = Synth("shot", 0.09f, (t, k) => Square(Mathf.Lerp(1100f, 450f, k), t) * (1f - k) * 0.35f);
             hit = Synth("hit", 0.07f, (t, k) => Noise() * (1f - k) * 0.5f);
@@ -68,6 +72,8 @@ namespace Titan.Game
         }
 
         public void Deploy() => source.PlayOneShot(deploy, 0.6f);
+        /// <summary>Salvage (a cannon flies off, a tray label counts down): the deploy sound at pitch 1.5.</summary>
+        public void Salvage() => highSource.PlayOneShot(deploy, 0.55f);
         public void Step(float strength) { source.PlayOneShot(step, 0.5f + 0.4f * strength); Shake(0.04f + 0.08f * strength, 0.2f); }
         public void Crash(int size) { source.PlayOneShot(crash, 0.9f); Shake(Mathf.Clamp(0.12f + size * 0.006f, 0.12f, 0.5f), 0.45f); }
         public void Roar() => source.PlayOneShot(roar, 0.8f);

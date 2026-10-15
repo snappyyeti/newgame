@@ -136,7 +136,7 @@ namespace Titan.Game
             else
             {
                 view.ShakeTray(i);
-                ShowBanner("Toate cele 5 locuri sunt ocupate!");
+                ShowBanner("Toate cele " + game.Line.Length + " locuri sunt ocupate!");
             }
         }
 
@@ -259,18 +259,36 @@ namespace Titan.Game
             GUI.color = Color.white;
             Shadowed(new Rect(bar.xMax - 80 * s, bar.yMax, 80 * s, 22 * s), "ZIDUL", new GUIStyle(small) { alignment = TextAnchor.UpperRight, fontSize = Mathf.RoundToInt(14 * s) });
 
-            // Ammo on every cannon.
+            // Ammo on every cannon. Tray labels count down visibly when salvage takes dead ammo away.
             for (int i = 0; i < game.Tray.Length; i++)
             {
+                var c = game.Tray[i];
                 var pos = view.TrayLabel(i);
-                if (game.Tray[i] != null && pos.HasValue) AmmoTag(pos.Value, game.Tray[i], false, s);
+                if (c == null || !pos.HasValue) continue;
+                AmmoTag(pos.Value, c.Color, view.TrayAmmoShown(i, c.Ammo), TagState.Ready, s);
+                if (!game.IsOver) CutTag(pos.Value, c, i, s);
             }
+            view.ForEachDyingTrayTag((pos, color, ammo) => AmmoTag(pos, color, ammo, TagState.Ready, s));
             for (int i = 0; i < game.Line.Length; i++)
             {
+                var c = game.Line[i];
                 var pos = view.LineLabel(i);
-                if (game.Line[i] != null && pos.HasValue)
-                    AmmoTag(pos.Value, game.Line[i], !game.Monster.HasVisibleOfColor(game.Line[i].Color), s);
+                if (c == null || !pos.HasValue) continue;
+                // "zzz" only for a color that still exists (hidden for now). With salvage a vanished color never stays on the wall.
+                var state = game.Monster.HasVisibleOfColor(c.Color) ? TagState.Ready
+                    : game.Monster.CountOfColor(c.Color) > 0 ? TagState.Waiting : TagState.Dead;
+                AmmoTag(pos.Value, c.Color, c.Ammo, state, s);
             }
+            view.ForEachFlyLabel((pos, color, text, alpha) =>
+            {
+                var r = new Rect(pos.x - 40 * s, pos.y - 34 * s, 80 * s, 30 * s);
+                GUI.color = new Color(0, 0, 0, 0.55f * alpha);
+                GUI.DrawTexture(r, white);
+                var style = new GUIStyle(label);
+                style.normal.textColor = Color.Lerp(ArenaView.Palette[color % ArenaView.Palette.Length], Color.white, 0.25f) * new Color(1, 1, 1, alpha);
+                GUI.color = Color.white;
+                GUI.Label(r, text, style);
+            });
 
             if (banner != null && Time.time < bannerUntil)
                 Shadowed(new Rect(0, Screen.height * 0.36f, w, 60 * s), banner, center);
@@ -293,13 +311,59 @@ namespace Titan.Game
             if (game.IsOver) DrawGameOver(w, s);
         }
 
-        void AmmoTag(Vector2 at, Cannon c, bool waiting, float s)
+        enum TagState { Ready, Waiting, Dead }
+
+        void AmmoTag(Vector2 at, int color, int ammo, TagState state, float s)
         {
             var r = new Rect(at.x - 32 * s, at.y - 34 * s, 64 * s, 30 * s);
-            GUI.color = waiting ? new Color(0.25f, 0.25f, 0.28f, 0.85f) : ArenaView.Palette[c.Color % ArenaView.Palette.Length];
+            GUI.color = state == TagState.Ready ? ArenaView.Palette[color % ArenaView.Palette.Length]
+                : state == TagState.Waiting ? new Color(0.25f, 0.25f, 0.28f, 0.85f) : new Color(0.12f, 0.12f, 0.14f, 0.85f);
             GUI.DrawTexture(r, white);
             GUI.color = Color.white;
-            Shadowed(r, waiting ? c.Ammo + " zzz" : c.Ammo.ToString(), label);
+            Shadowed(r, state == TagState.Waiting ? ammo + " zzz" : ammo.ToString(), label);
+        }
+
+        GUIStyle cutStyle;
+
+        /// <summary>
+        /// "TAIE!" above a tray cannon whose own ammo cuts a limb when deployed now (Core simulates the targeting on a
+        /// copy, so the tag never lies). Otherwise, when its color owns a visible joint and another cannon of that
+        /// color is in the tray or on the wall, a hollow "taie în N" (N = shots the cut needs). Otherwise nothing.
+        /// </summary>
+        void CutTag(Vector2 at, Cannon c, int traySlot, float s)
+        {
+            var r = new Rect(at.x - 32 * s, at.y - 34 * s - 4 * s - 22 * s, 64 * s, 22 * s);
+            if (cutStyle == null || cutStyle.fontSize != Mathf.RoundToInt(18 * s))
+                cutStyle = new GUIStyle(label) { fontSize = Mathf.RoundToInt(18 * s), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Overflow };
+            var yellow = new Color(1f, 0.86f, 0.1f);
+            if (game.ShotsToSever(c) >= 0)
+            {
+                float alpha = 0.85f + 0.15f * Mathf.Sin(Time.time * 2f * Mathf.PI * 3f); // 0.7-1.0 at 3 Hz
+                GUI.color = new Color(yellow.r, yellow.g, yellow.b, alpha);
+                GUI.DrawTexture(r, white);
+                GUI.color = Color.white;
+                cutStyle.normal.textColor = new Color(0.1f, 0.08f, 0f, alpha);
+                GUI.Label(r, "TAIE!", cutStyle);
+                return;
+            }
+            if (!game.Monster.HasVisibleJointOfColor(c.Color)) return;
+            int others = 0;
+            for (int i = 0; i < game.Tray.Length; i++)
+                if (i != traySlot && game.Tray[i] != null && game.Tray[i].Color == c.Color) others += game.Tray[i].Ammo;
+            foreach (var l in game.Line)
+                if (l != null && l.Color == c.Color) others += l.Ammo;
+            if (others == 0) return;
+            int shots = game.ShotsToCut(c.Color, game.DeploySlot, c.Ammo + others);
+            if (shots <= 0) return;
+            float t = Mathf.Max(1f, 2f * s);
+            GUI.color = yellow;
+            GUI.DrawTexture(new Rect(r.x, r.y, r.width, t), white);
+            GUI.DrawTexture(new Rect(r.x, r.yMax - t, r.width, t), white);
+            GUI.DrawTexture(new Rect(r.x, r.y, t, r.height), white);
+            GUI.DrawTexture(new Rect(r.xMax - t, r.y, t, r.height), white);
+            GUI.color = Color.white;
+            cutStyle.normal.textColor = yellow;
+            GUI.Label(r, "taie în " + shots, cutStyle);
         }
 
         void DrawGameOver(float w, float s)

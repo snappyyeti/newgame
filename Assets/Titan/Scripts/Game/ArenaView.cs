@@ -19,6 +19,9 @@ namespace Titan.Game
         const float TrayZ = -4.2f;
         const float TraySpacing = 3.3f;
         const float TrayScale = 1.35f;
+        /// <summary>Salvage timing: the "-N" label flies for 0.3 s, then the ammo label counts down for 0.3 s.</summary>
+        const float SalvageFlyTime = 0.3f;
+        const float SalvageCountTime = 0.3f;
 
         public static readonly Color[] Palette =
         {
@@ -36,7 +39,7 @@ namespace Titan.Game
 
         Material[][] cubeMats;
         Material[] colorMats;
-        Material darkMat, metalMat;
+        Material darkMat, metalMat, stitchMat;
 
         Transform monsterRoot;
         readonly Dictionary<Int3, Transform> cubes = new Dictionary<Int3, Transform>();
@@ -60,7 +63,37 @@ namespace Titan.Game
             public Transform Root;
             public Transform Pivot;
             public int Color;
+            /// <summary>Ammo label: shows LabelFrom until LabelStart, then counts to LabelTo over SalvageCountTime.</summary>
+            public int LabelFrom, LabelTo;
+            public float LabelStart;
+            /// <summary>Hidden (no label, no taps) until this time, while it pops in behind a salvaged cannon.</summary>
+            public float ShowFrom;
+
+            public int ShownAmmo
+            {
+                get
+                {
+                    float k = Mathf.Clamp01((Time.time - LabelStart) / SalvageCountTime);
+                    return Mathf.RoundToInt(Mathf.Lerp(LabelFrom, LabelTo, k));
+                }
+            }
         }
+
+        /// <summary>A "-N" that flies from a fallen piece to the tray cannon losing that ammo.</summary>
+        sealed class FlyLabel
+        {
+            public Vector3 From;
+            public CannonView Target;
+            public int Color;
+            public string Text;
+            public float Start;
+        }
+
+        readonly List<FlyLabel> flyLabels = new List<FlyLabel>();
+        /// <summary>Tray cannons emptied by salvage: still drawn (label counting to 0) until they shrink away.</summary>
+        readonly List<CannonView> dyingTray = new List<CannonView>();
+        Vector3 lastPieceCenter;
+        float lastPieceTime = -10f;
 
         // ---------------------------------------------------------------- building
 
@@ -84,6 +117,7 @@ namespace Titan.Game
                 };
             }
             darkMat = MakeMaterial(new Color(0.20f, 0.21f, 0.24f));
+            stitchMat = MakeMaterial(Color.white);
             metalMat = MakeMaterial(new Color(0.55f, 0.57f, 0.62f));
 
             BuildArena();
@@ -196,7 +230,7 @@ namespace Titan.Game
             float bestD = Screen.height * 0.09f;
             for (int i = 0; i < tray.Length; i++)
             {
-                if (tray[i] == null) continue;
+                if (tray[i] == null || Time.time < tray[i].ShowFrom) continue;
                 var p = cam.WorldToScreenPoint(trayPos[i] + Vector3.up * 0.7f);
                 float d = Vector2.Distance(screen, p);
                 if (d < bestD)
@@ -212,9 +246,46 @@ namespace Titan.Game
         public Vector2? TrayLabel(int i) => Label(tray[i]);
         public Vector2? LineLabel(int s) => Label(line[s]);
 
+        /// <summary>The ammo the tray label shows now (it counts down after a salvage), or the game's value.</summary>
+        public int TrayAmmoShown(int i, int actual) => tray[i] != null ? tray[i].ShownAmmo : actual;
+
+        /// <summary>Calls <paramref name="draw"/>(label position, color, shown ammo) for tray cannons emptied by salvage.</summary>
+        public void ForEachDyingTrayTag(Action<Vector2, int, int> draw)
+        {
+            foreach (var c in dyingTray)
+            {
+                var p = Label(c);
+                if (p.HasValue) draw(p.Value, c.Color, c.ShownAmmo);
+            }
+        }
+
+        /// <summary>Calls <paramref name="draw"/>(screen position, color, text, alpha) for every flying "-N" label.</summary>
+        public void ForEachFlyLabel(Action<Vector2, int, string, float> draw)
+        {
+            for (int i = flyLabels.Count - 1; i >= 0; i--)
+            {
+                var f = flyLabels[i];
+                float k = (Time.time - f.Start) / SalvageFlyTime;
+                if (k > 1.15f || f.Target.Root == null)
+                {
+                    flyLabels.RemoveAt(i);
+                    continue;
+                }
+                if (k < 0f) continue;
+                var to = Label(f.Target);
+                var from = cam.WorldToScreenPoint(f.From);
+                if (!to.HasValue || from.z <= 0) continue;
+                float e = Mathf.Clamp01(k);
+                e = 1f - (1f - e) * (1f - e);
+                var start = new Vector2(from.x, Screen.height - from.y);
+                var pos = Vector2.Lerp(start, to.Value, e) + Vector2.up * (-40f * Screen.height / 1000f * 4f * e * (1f - e));
+                draw(pos, f.Color, f.Text, k > 1f ? 1f - (k - 1f) / 0.15f : 1f);
+            }
+        }
+
         Vector2? Label(CannonView c)
         {
-            if (c == null || c.Root == null) return null;
+            if (c == null || c.Root == null || Time.time < c.ShowFrom) return null;
             var p = cam.WorldToScreenPoint(c.Root.position + Vector3.up * (1.45f * c.Root.localScale.y));
             if (p.z <= 0) return null;
             return new Vector2(p.x, Screen.height - p.y);
@@ -235,7 +306,14 @@ namespace Titan.Game
                 case EventKind.TrayRefilled: RebuildTray(); break;
                 case EventKind.Deployed: Deploy(e.TraySlot, e.Slot); break;
                 case EventKind.Shot: Shoot(e); break;
-                case EventKind.PieceFell: StartCoroutine(Fall(e)); break;
+                case EventKind.PieceFell:
+                    RememberPiece(e.Piece);
+                    StartCoroutine(Fall(e));
+                    break;
+                case EventKind.Salvaged:
+                    if (e.Slot >= 0) SalvageLine(e);
+                    else if (e.TraySlot >= 0) SalvageTray(e);
+                    break;
                 case EventKind.CannonEmpty: StartCoroutine(RetireCannon(e.Slot)); break;
                 case EventKind.Step: StartCoroutine(StepTo(e.Distance)); break;
                 case EventKind.TitanDefeated: Defeated(e); break;
@@ -261,9 +339,12 @@ namespace Titan.Game
             foreach (var kv in game.Monster.Cubes)
             {
                 var c = kv.Key;
-                var t = Primitive(PrimitiveType.Cube, "Cube", monsterRoot, cubeMats[kv.Value][rng.Next(3)], false);
+                var mat = cubeMats[kv.Value][rng.Next(3)];
+                var t = Primitive(PrimitiveType.Cube, "Cube", monsterRoot, mat, false);
                 t.localPosition = new Vector3(c.X, c.Y + 0.5f, c.Z + 0.5f);
                 t.localScale = Vector3.one * CubeScale;
+                if (game.Monster.IsJoint(c)) AddStitch(t);
+                else if (game.Monster.IsGlove(c)) MakeGlove(t, mat);
                 cubes[c] = t;
             }
             stepCount = 0;
@@ -271,6 +352,39 @@ namespace Titan.Game
             StartCoroutine(Rise(monsterRoot, game.Monster.MaxY + 2f));
             fx.Roar();
             Banner?.Invoke("TITANUL #" + level);
+        }
+
+        /// <summary>The "cusătură" (stitch): a thin white band around a joint cube. The cube keeps its color.</summary>
+        void AddStitch(Transform cube)
+        {
+            var band = Primitive(PrimitiveType.Cube, "Stitch", cube, stitchMat, false);
+            band.localPosition = Vector3.zero;
+            band.localScale = new Vector3(1.04f, 0.14f, 1.04f);
+        }
+
+        /// <summary>A hand cube: an inset cube of the same material inside a dark edge frame. A shape cue, same luminance.</summary>
+        void MakeGlove(Transform cube, Material mat)
+        {
+            cube.GetComponent<Renderer>().enabled = false;
+            var inset = Primitive(PrimitiveType.Cube, "Glove", cube, mat, false);
+            inset.localScale = Vector3.one * 0.9f;
+            const float edge = 0.07f;
+            for (int sx = -1; sx <= 1; sx += 2)
+            {
+                // Front face frame (facing the wall) and the four edges running back along Z.
+                var vertical = Primitive(PrimitiveType.Cube, "Edge", cube, darkMat, false);
+                vertical.localPosition = new Vector3(sx * 0.48f, 0f, -0.48f);
+                vertical.localScale = new Vector3(edge, 1f, edge);
+                var horizontal = Primitive(PrimitiveType.Cube, "Edge", cube, darkMat, false);
+                horizontal.localPosition = new Vector3(0f, sx * 0.48f, -0.48f);
+                horizontal.localScale = new Vector3(1f, edge, edge);
+                for (int sy = -1; sy <= 1; sy += 2)
+                {
+                    var depth = Primitive(PrimitiveType.Cube, "Edge", cube, darkMat, false);
+                    depth.localPosition = new Vector3(sx * 0.48f, sy * 0.48f, 0f);
+                    depth.localScale = new Vector3(edge, edge, 1f);
+                }
+            }
         }
 
         void RebuildTray()
@@ -282,8 +396,93 @@ namespace Titan.Game
                 var data = game.Tray[i];
                 if (data == null) continue;
                 tray[i] = MakeCannon(data.Color, trayPos[i], TrayScale);
-                StartCoroutine(PopIn(tray[i].Root, TrayScale, 0.2f + 0.06f * i));
+                SetLabel(tray[i], data.Ammo);
+                // Behind a cannon that salvage is emptying, the new one waits until the old one has shrunk away.
+                float wait = 0f;
+                foreach (var d in dyingTray)
+                    if (d.Root != null && (d.Root.position - trayPos[i]).sqrMagnitude < 0.01f)
+                        wait = Mathf.Max(wait, d.LabelStart + SalvageCountTime + 0.25f - Time.time);
+                tray[i].ShowFrom = Time.time + wait;
+                StartCoroutine(PopInLater(tray[i].Root, TrayScale, 0.2f + 0.06f * i, wait));
             }
+        }
+
+        static void SetLabel(CannonView c, int ammo)
+        {
+            c.LabelFrom = c.LabelTo = ammo;
+            c.LabelStart = 0f;
+        }
+
+        // ---------------------------------------------------------------- salvage
+
+        void RememberPiece(FallenPiece piece)
+        {
+            var center = Vector3.zero;
+            int n = 0;
+            foreach (var c in piece.Cubes)
+                if (cubes.TryGetValue(c, out var t) && t != null)
+                {
+                    center += t.position;
+                    n++;
+                }
+            if (n == 0) return;
+            lastPieceCenter = center / n;
+            lastPieceTime = Time.time;
+        }
+
+        /// <summary>A line cannon whose color is gone: spins once and flies up off the wall, "RECUPERAT +N".</summary>
+        void SalvageLine(GameEvent e)
+        {
+            var c = line[e.Slot];
+            line[e.Slot] = null;
+            fx.Salvage();
+            Popup?.Invoke(slotPos[e.Slot] + Vector3.up * 2.2f, "RECUPERAT +" + e.Points);
+            if (c != null) StartCoroutine(SpinAndFly(c.Root, 0.35f, 6f));
+        }
+
+        /// <summary>A tray cannon loses dead ammo: "-N" flies from the fallen piece to it, then its label counts down.</summary>
+        void SalvageTray(GameEvent e)
+        {
+            var c = tray[e.TraySlot];
+            if (c == null) return;
+            fx.Salvage();
+            // The piece starts to fall one projectile flight after the cut; the label leaves with it.
+            float start = Time.time + (Time.time - lastPieceTime < 0.05f ? ProjectileTime : 0f);
+            var from = Time.time - lastPieceTime < 0.05f ? lastPieceCenter
+                : (monsterRoot != null ? monsterRoot.position + Vector3.up * game.Monster.MaxY * 0.6f : Vector3.up * 5f);
+            flyLabels.Add(new FlyLabel { From = from, Target = c, Color = e.Color, Text = "-" + e.Ammo, Start = start });
+            c.LabelFrom = c.ShownAmmo;
+            c.LabelTo = Mathf.Max(0, c.LabelTo - e.Ammo);
+            c.LabelStart = start + SalvageFlyTime;
+            if (c.LabelTo > 0) return;
+            // Emptied: it stays until its label reaches 0, then shrinks away (the slot may refill right behind it).
+            tray[e.TraySlot] = null;
+            dyingTray.Add(c);
+            StartCoroutine(RetireDying(c, c.LabelStart + SalvageCountTime - Time.time));
+        }
+
+        IEnumerator RetireDying(CannonView c, float wait)
+        {
+            if (wait > 0f) yield return new WaitForSeconds(wait);
+            yield return StartCoroutine(ShrinkAway(c.Root, 0.25f));
+            dyingTray.Remove(c);
+        }
+
+        static IEnumerator SpinAndFly(Transform t, float duration, float height)
+        {
+            if (t == null) yield break;
+            var start = t.position;
+            var rot = t.rotation;
+            float time = 0f;
+            while (time < duration && t != null)
+            {
+                time += Time.deltaTime;
+                float k = Mathf.Clamp01(time / duration);
+                t.position = start + Vector3.up * height * k * k;
+                t.rotation = rot * Quaternion.Euler(0f, 360f * k, 0f);
+                yield return null;
+            }
+            if (t != null) Destroy(t.gameObject);
         }
 
         void Deploy(int traySlot, int slot)
@@ -292,6 +491,7 @@ namespace Titan.Game
             tray[traySlot] = null;
             if (c == null) c = MakeCannon(game.Line[slot] != null ? game.Line[slot].Color : 0, trayPos[traySlot], TrayScale);
             line[slot] = c;
+            c.ShowFrom = 0f;
             StartCoroutine(Move(c.Root, slotPos[slot], 0.25f, 2.5f, 1f));
             fx.Deploy();
         }
@@ -522,6 +722,16 @@ namespace Titan.Game
                 yield return null;
             }
             if (t != null) t.localScale = Vector3.one * scale;
+        }
+
+        IEnumerator PopInLater(Transform t, float scale, float duration, float delay)
+        {
+            if (delay > 0f)
+            {
+                t.localScale = Vector3.zero;
+                yield return new WaitForSeconds(delay);
+            }
+            if (t != null) yield return StartCoroutine(PopIn(t, scale, duration));
         }
 
         static IEnumerator PopAndDestroy(Transform t)
