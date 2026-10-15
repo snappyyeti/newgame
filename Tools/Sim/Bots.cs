@@ -39,7 +39,7 @@ namespace Titan.Sim
         public static int Choose(BotKind bot, BotView v, IRandom r)
         {
             var idx = new List<int>();
-            for (int i = 0; i < v.TraySize; i++) if (v.HasTray(i)) idx.Add(i);
+            for (int i = 0; i < v.TraySize; i++) if (v.HasTray(i) && v.Tappable(i)) idx.Add(i); // a refused tap is never chosen
             if (idx.Count == 0 || v.FreeSlots == 0) return -1;
             switch (bot)
             {
@@ -63,7 +63,8 @@ namespace Titan.Sim
         }
 
         /// <summary>
-        /// Scores every tray cannon: visible colors first, a visible joint (the cut) gets a big bonus, a color already
+        /// Scores every tray cannon: visible colors first, a visible joint (the cut) gets a big bonus and a "TAIE!" tag
+        /// (the player-visible cut prediction) another one, a color already
         /// committed on the line a malus, cannons with nothing left to hit go last. An idle cannon is parked only when
         /// nothing fires (waiting cannot help) or the line still has room, so it does not fill the last free slot
         /// while something else is still shooting.
@@ -85,7 +86,7 @@ namespace Titan.Sim
                 double s;
                 if (left <= 0) s = -1000 - ammo; // surplus or dead: nothing left for it
                 else if (vis[color] > 0)
-                    s = 100 + Math.Min(vis[color], ammo) - (committed[color] > 0 ? 25 : 0) + (v.JointVisible(color) ? 80 : 0) + 0.3 * ammo;
+                    s = 100 + Math.Min(vis[color], ammo) - (committed[color] > 0 ? 25 : 0) + (v.JointVisible(color) ? 80 : 0) + 0.3 * ammo + (v.TrayCutShot(i) >= 0 ? 60 : 0);
                 else s = -50 + Math.Min(left, ammo) * 0.1;
                 if (s > bestScore)
                 {

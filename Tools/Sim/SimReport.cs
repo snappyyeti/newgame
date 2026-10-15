@@ -10,6 +10,7 @@ namespace Titan.Sim
     public sealed class TitanLevelSummary
     {
         public int Level;
+        public TitanRole Role;
         public int Count;
         public double ClearP10, ClearP50, ClearP90, ApproachMean, MarginP10, MarginP50;
     }
@@ -30,6 +31,12 @@ namespace Titan.Sim
         /// <summary>Share of runs lost on titan k.</summary>
         public readonly SortedDictionary<int, double> LostOnTitan = new SortedDictionary<int, double>();
         public double TitanOneLoss;
+        /// <summary>Share of losses at the wall (WallReached) among runs that ended with a loss.</summary>
+        public double WallShareOfLosses;
+        /// <summary>Median margin (fraction of the start distance left) over every defeated titan; share defeated "la mustață".</summary>
+        public double MarginP50All, NearMissShare;
+        /// <summary>Worst per-titan median clear time by role over titans 1-16 (DESIGN.md 12.1: 10-40 s, sprint &lt;= 16 s, boss &lt;= 40 s).</summary>
+        public double ClearP50Min, ClearP50Max, SprintClearP50Max, BossClearP50Max;
         public double TimeoutShare;
         /// <summary>Share of SlotsFull losses that came from the bot's own tap (a 5th idle cannon).</summary>
         public double SelfTapShareOfSlotsFull;
@@ -76,6 +83,11 @@ namespace Titan.Sim
             foreach (var grp in gs.Where(g => g.Reason != LoseReason.None).GroupBy(g => g.LoseLevel))
                 s.LostOnTitan[grp.Key] = (double)grp.Count() / n;
             s.TitanOneLoss = s.LostOnTitan.TryGetValue(1, out var t1) ? t1 : 0;
+            int losses = gs.Count(g => g.Reason != LoseReason.None);
+            s.WallShareOfLosses = losses == 0 ? 0 : (double)gs.Count(g => g.Reason == LoseReason.WallReached) / losses;
+            var allTitans = gs.SelectMany(g => g.Titans).ToList();
+            s.MarginP50All = Pct(allTitans.Select(x => x.Margin), .5);
+            s.NearMissShare = allTitans.Count == 0 ? 0 : (double)allTitans.Count(x => x.NearMiss) / allTitans.Count;
             int slotsFull = gs.Count(g => g.Reason == LoseReason.SlotsFull);
             s.SelfTapShareOfSlotsFull = slotsFull == 0 ? 0 : (double)gs.Count(g => g.Reason == LoseReason.SlotsFull && g.LostOnTap) / slotsFull;
             s.DeadOnLineAtSlotsFullLoss = slotsFull == 0 ? 0 : gs.Where(g => g.Reason == LoseReason.SlotsFull).Average(g => (double)g.DeadOnLineAtLoss);
@@ -87,6 +99,7 @@ namespace Titan.Sim
                 s.PerTitan.Add(new TitanLevelSummary
                 {
                     Level = grp.Key,
+                    Role = grp.First().Role,
                     Count = clear.Length,
                     ClearP10 = Pct(clear, .1),
                     ClearP50 = Pct(clear, .5),
@@ -96,6 +109,13 @@ namespace Titan.Sim
                     MarginP50 = Pct(margin, .5),
                 });
             }
+
+            // Medians on fewer than 10 defeats are noise; they do not count toward the clear-time range.
+            var ranged = s.PerTitan.Where(t => t.Level <= 16 && t.Count >= 10).ToList();
+            s.ClearP50Min = ranged.Count == 0 ? double.NaN : ranged.Min(t => t.ClearP50);
+            s.ClearP50Max = ranged.Count == 0 ? double.NaN : ranged.Max(t => t.ClearP50);
+            s.SprintClearP50Max = ranged.Where(t => t.Role == TitanRole.Sprint).Select(t => t.ClearP50).DefaultIfEmpty(double.NaN).Max();
+            s.BossClearP50Max = ranged.Where(t => t.Role == TitanRole.Boss).Select(t => t.ClearP50).DefaultIfEmpty(double.NaN).Max();
 
             double tot = Math.Max(1e-9, gs.Sum(g => g.RunTime));
             s.DeadAirShare = gs.Sum(g => g.DeadAir) / tot;
@@ -157,11 +177,13 @@ namespace Titan.Sim
             var reasons = LoseShare.Where(kv => kv.Key != LoseReason.None).Select(kv => kv.Key + " " + P(kv.Value));
             w.WriteLine("lose reasons: " + string.Join("  ", reasons) + "  timeout(30 min cap) " + P(TimeoutShare)
                 + "; slotsFull from own tap: " + P(SelfTapShareOfSlotsFull));
+            w.WriteLine("wall share of losses " + P(WallShareOfLosses) + "; margin at defeat p50 " + F(MarginP50All) + "; defeated 'la mustață' " + P(NearMissShare));
             w.WriteLine("lost on titan k: " + string.Join("  ", LostOnTitan.Take(12).Select(kv => "T" + kv.Key + ":" + P(kv.Value))) + "   (titan-1 loss " + P(TitanOneLoss) + ")");
             w.WriteLine("per-titan: clear time p50 (p10-p90) / approach / margin left p50 (p10) when defeated:");
             foreach (var t in PerTitan.Take(16))
-                w.WriteLine("   titan " + t.Level.ToString().PadLeft(2) + ": n=" + t.Count.ToString().PadLeft(4) + "  clear " + F(t.ClearP50, 0).PadLeft(4) + "s (" + F(t.ClearP10, 0) + "-" + F(t.ClearP90, 0)
+                w.WriteLine("   titan " + t.Level.ToString().PadLeft(2) + (t.Role == TitanRole.Sprint ? " S" : t.Role == TitanRole.Boss ? " B" : "  ") + ": n=" + t.Count.ToString().PadLeft(4) + "  clear " + F(t.ClearP50, 0).PadLeft(4) + "s (" + F(t.ClearP10, 0) + "-" + F(t.ClearP90, 0)
                     + ")  approach " + F(t.ApproachMean, 0).PadLeft(4) + "s  margin " + F(t.MarginP50) + " (" + F(t.MarginP10) + ")");
+            w.WriteLine("   median clear over titans 1-16 (n>=10): " + F(ClearP50Min, 0) + "-" + F(ClearP50Max, 0) + " s; sprint max " + F(SprintClearP50Max, 0) + " s; boss max " + F(BossClearP50Max, 0) + " s");
             w.WriteLine("time shares: dead air (nothing firing) " + P(DeadAirShare) + "  line full " + P(LineFullShare) + "  waiting by choice " + P(WaitChoiceShare)
                 + "  danger>=75% " + P(Danger75Share) + "  dead cannon parked " + P(DeadParkedShare));
             w.WriteLine("max continuous stuck time per run (s): p50 " + F(MaxStuckP50) + " p90 " + F(MaxStuckP90) + " max " + F(MaxStuckMax));

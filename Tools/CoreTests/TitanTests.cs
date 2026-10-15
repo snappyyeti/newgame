@@ -107,7 +107,7 @@ namespace Titan.Tests
         [Test]
         public void TrayHoldsThreeCannonsAndDeployFillsFirstFreeSlot()
         {
-            var g = new TitanGame(new TitanConfig(), new SystemRandom(1));
+            var g = new TitanGame(new TitanConfig { TrayRefill = TrayRefill.Batch }, new SystemRandom(1));
             Assert.IsTrue(g.Tray.All(c => c != null));
             Assert.IsTrue(g.Deploy(1));
             Assert.IsNotNull(g.Line[0]);
@@ -119,7 +119,7 @@ namespace Titan.Tests
         [Test]
         public void TrayRefillsWhenAllThreeAreUsed()
         {
-            var g = new TitanGame(new TitanConfig(), new SystemRandom(2));
+            var g = new TitanGame(new TitanConfig { TrayRefill = TrayRefill.Batch }, new SystemRandom(2));
             g.Deploy(0);
             g.Deploy(1);
             g.Deploy(2);

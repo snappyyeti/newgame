@@ -33,10 +33,11 @@ namespace Titan.Core
 
         public static int ColorsForLevel(int level) => Math.Min(3 + (level - 1) / 2, MaxColors);
 
-        public static Monster Build(int level, IRandom rng)
+        /// <param name="extraColors">Colors on top of <see cref="ColorsForLevel"/> (capped at MaxColors), e.g. TitanConfig.BossExtraColor.</param>
+        public static Monster Build(int level, IRandom rng, int extraColors = 0)
         {
             level = Math.Max(1, level);
-            int colorCount = ColorsForLevel(level);
+            int colorCount = Math.Min(ColorsForLevel(level) + Math.Max(0, extraColors), MaxColors);
             var palette = new List<int>();
             for (int c = 0; c < MaxColors; c++) palette.Add(c);
             Shuffle(palette, rng);

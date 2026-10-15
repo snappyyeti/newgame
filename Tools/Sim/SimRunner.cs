@@ -21,6 +21,8 @@ namespace Titan.Sim
         public int ColorCount => MonsterBuilder.MaxColors;
         public int TraySize => game.Tray.Length;
         public bool HasTray(int i) => game.Tray[i] != null;
+        /// <summary>False when a tap on tray cannon i would be refused (line full, or the last-slot guard: the player sees the shake).</summary>
+        public bool Tappable(int i) => game.CanDeploy(i);
         public int TrayColor(int i) => game.Tray[i] != null ? game.Tray[i].Color : -1;
         public int TrayAmmo(int i) => game.Tray[i] != null ? game.Tray[i].Ammo : 0;
         public int LineSlots => game.Line.Length;
@@ -41,6 +43,8 @@ namespace Titan.Sim
     public struct TitanRecord
     {
         public int Level;
+        public TitanRole Role;
+        public bool NearMiss;
         public double ClearTime;
         public double Approach;
         /// <summary>Fraction of the start distance still left when the titan died.</summary>
@@ -224,7 +228,7 @@ namespace Titan.Sim
                         break;
                     case EventKind.TitanDefeated:
                         st.Defeated++;
-                        st.Titans.Add(new TitanRecord { Level = level, ClearTime = t - titanStart, Approach = approach, Margin = distBefore / cfg.StartDistance });
+                        st.Titans.Add(new TitanRecord { Level = level, Role = e.Role, NearMiss = e.NearMiss, ClearTime = t - titanStart, Approach = approach, Margin = distBefore / cfg.StartDistance });
                         break;
                     case EventKind.TitanSpawned:
                         titanStart = t;
