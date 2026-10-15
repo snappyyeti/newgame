@@ -57,7 +57,7 @@ Cascadele sunt rare: sub 2% din SPLASH-uri continuă cu un al doilea pas. De urm
 dotnet test Tools/CoreTests
 ```
 
-Ca să le rulezi și din Unity, instalează **Test Framework** din Package Manager. Apoi apar în **Window → General → Test Runner → EditMode**. Pachetul nu e inclus din start, ca proiectul să se deschidă fără erori pe orice Unity 6.
+Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze (ar avea nevoie de pachetul Test Framework).
 
 ## Structură
 
@@ -65,6 +65,5 @@ Ca să le rulezi și din Unity, instalează **Test Framework** din Package Manag
 Assets/SplashSort/Scripts/Core   logica pură (fără UnityEngine): tabla, colacii, unirea, SPLASH, cascada, scorul
 Assets/SplashSort/Scripts/Game   Unity: grila din primitive, drag & drop, animații, sunet, zguduire, particule, HUD
 Assets/SplashSort/Editor         pregătirea automată a proiectului în editor
-Assets/SplashSort/Tests/Editor   teste NUnit (EditMode)
-Tools/CoreTests                  proiect dotnet care rulează testele în afara Unity
+Tools/CoreTests                  testele NUnit ale logicii, rulate cu dotnet în afara Unity
 ```

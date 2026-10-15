@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Runs the Unity EditMode tests for the pure game logic outside Unity:
+    Tests for the pure game logic, run outside Unity:
       dotnet test Tools/CoreTests
-    The same .cs files are compiled by Unity through the asmdefs in Assets/SplashSort.
+    The tests live here, outside Assets, so Unity never compiles them (it would need the Test Framework package).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <Compile Include="../../Assets/SplashSort/Scripts/Core/**/*.cs" />
-    <Compile Include="../../Assets/SplashSort/Tests/Editor/**/*.cs" />
+    <Compile Include="*.cs" />
   </ItemGroup>
 
   <ItemGroup>
