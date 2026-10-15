@@ -97,6 +97,7 @@ namespace Titan.Game
 
         Vector3[] slotPos;
         Vector3[] trayPos;
+        Coroutine[] trayWobbles;
         CannonView[] line;
         CannonView[] tray;
 
@@ -201,6 +202,7 @@ namespace Titan.Game
             }
 
             trayPos = new Vector3[config.TraySize];
+            trayWobbles = new Coroutine[config.TraySize];
             tray = new CannonView[trayPos.Length];
             emptyRings = new Transform[trayPos.Length];
             var ringMat = MakeMaterial(new Color(0.12f, 0.12f, 0.14f));
@@ -614,9 +616,17 @@ namespace Titan.Game
             return new Vector2(p.x, Screen.height - p.y);
         }
 
+        /// <summary>
+        /// Refused tap: shake the tray cannon around its own pad. One wobble per slot (a second refusal restarts it),
+        /// and none while the cannon is still rising or popping in (the refusal banner says enough).
+        /// </summary>
         public void ShakeTray(int i)
         {
-            if (tray[i] != null) StartCoroutine(Wobble(tray[i].Root));
+            if (tray == null || i < 0 || i >= tray.Length || tray[i] == null || tray[i].Root == null) return;
+            var t = tray[i].Root;
+            if (Mathf.Abs(t.position.y - trayPos[i].y) > 0.01f || t.localScale.x < TrayScale * 0.99f) return;
+            if (trayWobbles[i] != null) StopCoroutine(trayWobbles[i]);
+            trayWobbles[i] = StartCoroutine(Wobble(t, trayPos[i]));
         }
 
         // ---------------------------------------------------------------- events
@@ -947,6 +957,11 @@ namespace Titan.Game
         {
             var c = tray[traySlot];
             tray[traySlot] = null;
+            if (trayWobbles != null && traySlot >= 0 && traySlot < trayWobbles.Length && trayWobbles[traySlot] != null)
+            {
+                StopCoroutine(trayWobbles[traySlot]); // a refused tap just before: the wobble must not pull it back to the pad
+                trayWobbles[traySlot] = null;
+            }
             if (c == null) c = MakeCannon(game.Line[slot] != null ? game.Line[slot].Color : 0, trayPos[traySlot], TrayScale);
             line[slot] = c;
             c.ShowFrom = 0f;
@@ -1282,9 +1297,8 @@ namespace Titan.Game
             if (t != null) Destroy(t.gameObject);
         }
 
-        static IEnumerator Wobble(Transform t)
+        static IEnumerator Wobble(Transform t, Vector3 rest)
         {
-            var rest = t.position;
             float time = 0f;
             while (time < 0.25f && t != null)
             {

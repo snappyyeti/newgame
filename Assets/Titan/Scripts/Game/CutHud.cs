@@ -91,8 +91,14 @@ namespace Titan.Game
             style.normal.textColor *= new Color(1f, 1f, 1f, alpha);
             float rise = Mathf.Min(age, 0.6f) * 50f;
             float height = 3.4f * 30 * s * scale;
-            var r = new Rect(sp.x - 220 * s * scale, Screen.height - sp.y - height - rise * s, 440 * s * scale, height);
-            r.x = Mathf.Clamp(r.x, 0f, Mathf.Max(0f, Screen.width - r.width));
+            // Never wider than the screen (a x4/x5 popup at scale 1.45-1.6 was): center on the piece, keep a margin,
+            // and shrink the font when the widest line still does not fit.
+            float margin = 8f * s;
+            float width = Mathf.Min(440 * s * scale, Mathf.Max(1f, Screen.width - 2f * margin));
+            var r = new Rect(sp.x - width / 2f, Screen.height - sp.y - height - rise * s, width, height);
+            r.x = Mathf.Clamp(r.x, margin, Mathf.Max(margin, Screen.width - margin - width));
+            float textWidth = style.CalcSize(new GUIContent(text)).x;
+            if (textWidth > width) style.fontSize = Mathf.Max(1, Mathf.FloorToInt(style.fontSize * width / textWidth));
             Shadowed(r, text, style);
         }
 
