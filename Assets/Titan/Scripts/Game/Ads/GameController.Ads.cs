@@ -87,13 +87,19 @@ namespace Titan.Game
             AdPause.Apply(false);
         }
 
+        /// <summary>
+        /// The run on screen is Titanul Zilei (official or practice): no offer, no helper, no interstitial before, during
+        /// or after it (RET-3, DESIGN.md 9.4). Practice runs are ad-free too (DESIGN.md 9.7).
+        /// </summary>
+        bool DailyRanked => session != null && session.IsDaily;
+
         OfferContext OfferCtx() => new OfferContext
         {
             lifetimeRuns = profile.totalRuns,
             lifetimePlaySec = profile.totalPlaySeconds,
             sessionIndex = governor.SessionIndex,
             runSeconds = session.Seconds,
-            isDailyRanked = false, // RET-3 (Titanul Zilei) does not exist yet; its official run must pass true
+            isDailyRanked = DailyRanked,
             revivesUsedThisRun = game.Revives,
             helpsUsedThisRun = helpsUsedThisRun,
             helpUsedThisTitan = helpUsedThisTitan,
@@ -104,12 +110,13 @@ namespace Titan.Game
             rewardedReady = ads.IsRewardedReady,
         };
 
-        InterContext InterCtx(float resultsSeconds) => new InterContext
+        /// <param name="nextIsDaily">The run asked for is Titanul Zilei: no interstitial before it either.</param>
+        InterContext InterCtx(float resultsSeconds, bool nextIsDaily = false) => new InterContext
         {
             lifetimeRuns = profile.totalRuns,
             lifetimePlaySec = profile.totalPlaySeconds,
             runSeconds = session.Seconds,
-            isDailyRanked = false,
+            isDailyRanked = DailyRanked || nextIsDaily,
             resultsVisibleSeconds = resultsSeconds,
             newRecordOrFurthest = session.NewBest || session.NewFurthest,
         };
@@ -253,7 +260,7 @@ namespace Titan.Game
         /// </summary>
         bool OfferSecondWind(GameEvent e)
         {
-            if (!game.CanRevive || pendingGameOver != null) return false;
+            if (!game.CanRevive || pendingGameOver != null || DailyRanked) return false;
             if (!governor.EvaluateOffer(Placement.ReviveSecondWind, OfferCtx(), out _)) return false;
             pendingGameOver = e;
             reviveFreezeUntil = Time.realtimeSinceStartup + adConfig.revive_freeze_s;
@@ -293,6 +300,7 @@ namespace Titan.Game
         void RunReallyEnded()
         {
             telemetry.Track(Telemetry.Perf, FrameP95(), game.Level);
+            if (hints.OnRunEnded(game.Lost)) SaveProfile(); // H4: the cause of the first game over ever
             governor.OnRunEnded(session.Seconds);
             LogSlot6TitanEnd();
             if (revivedThisRun)
@@ -316,7 +324,8 @@ namespace Titan.Game
         {
             if (!resultsInteractive || interGate.Current != InterstitialGate.Phase.Idle) return;
             // The same context the note was computed from: no "Reclamă înainte de rundă" on screen means no ad.
-            var ctx = InterCtx(noteVisibleSeconds);
+            // A daily run asked for never gets one (and its button never shows the note).
+            var ctx = InterCtx(noteVisibleSeconds, start.IsDaily);
             interGate.TryShow(ctx, () =>
             {
                 SyncPause();

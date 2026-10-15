@@ -29,9 +29,17 @@ namespace Titan.Game
         Telemetry telemetry;
         RunSession session;
         TitanGame game => session?.Game;
-        /// <summary>App launch with a checkpoint after 3+ runs: "Continuă (titanul #n)" / "Joc nou" before any run.</summary>
-        bool launchOverlay;
+        /// <summary>
+        /// What fills the screen: the run (with its HUD and results), the menu (the launch overlay: checkpoint, new game,
+        /// Titanul Zilei) or the Titanul Zilei panel. Outside Play nothing ticks.
+        /// </summary>
+        enum UiScreen { Play, Menu, Daily }
+        UiScreen screen = UiScreen.Play;
         int seedCounter;
+
+        // The first minutes (FTUE-1) and Titanul Zilei (RET-3); their rules live in Titan.Core (FtueHints, DailyChallenge).
+        FtueHints hints;
+        DailyChallenge daily;
 
         float shownScore;
         float scorePunch;
@@ -121,8 +129,13 @@ namespace Titan.Game
             foreach (int source in corrupt) telemetry.Track(Telemetry.SaveCorrupt, source);
             int today = DayClock.StartSession(profile, System.DateTime.Now, out int daysSinceLast, out _);
             telemetry.Track(Telemetry.SessionStart, today, daysSinceLast);
+            // Before any UI: the daily roll (an unfinished attempt of an earlier day is finalized) and the streak.
+            daily = new DailyChallenge(profile, telemetry);
+            daily.OnLaunch(today);
+            hints = new FtueHints(profile, telemetry);
             Settings.Bind(profile.settings, SaveProfile);
             SaveProfile();
+            StartDailyPick();
             InitAds();
 
             view = new GameObject("Arena").AddComponent<ArenaView>();
@@ -132,7 +145,8 @@ namespace Titan.Game
             view.Banner += (text, color, seconds) => QueueBanner(text, color, seconds);
             screenSize = new Vector2Int(Screen.width, Screen.height);
 
-            if (RunSession.ShowLaunchOverlay(profile)) launchOverlay = true;
+            // The first 3 runs start at once (FTUE); later the menu shows when there is a checkpoint or a daily to play.
+            if (RunSession.ShowLaunchOverlay(profile, DailyWaiting)) screen = UiScreen.Menu;
             else StartRun(RunStart.Fresh(NewSeed()));
         }
 
@@ -149,9 +163,15 @@ namespace Titan.Game
             restartFrom = Time.realtimeSinceStartup;
             restartFrame = Time.frameCount;
             restartPending = restart;
-            launchOverlay = false;
+            screen = UiScreen.Play;
+            quitConfirm = false;
+            // The install's first runs meet the scripted tutorial titan first (FTUE-1).
+            if (start.Mode == Telemetry.ModeEndless && start.Titan == 1 && start.Plan == null) start.Plan = Ftue.PlanFor(profile);
 
             session = new RunSession(profile, telemetry, cfg, start);
+            if (start.IsDaily) daily.BeginRun(session);
+            else daily.EndRun();
+            if (hints.BeginRun(session.Game)) SaveProfile();
             ResetRunAds();
             fx.StopRunEffects();
             view.Reset(session.Game);
@@ -196,11 +216,12 @@ namespace Titan.Game
                 telemetry.Track(Telemetry.RestartMs, Mathf.RoundToInt((Time.realtimeSinceStartup - restartFrom) * 1000f));
             }
             CheckLogExport();
-            if (game == null) return;
+            UpdateDailyClock();
+            if (game == null || screen != UiScreen.Play) return;
 
             // Ad cards and ads first: while one is up (the pause contract) the run does not tick and the tray takes no taps.
             UpdateAds(Time.unscaledDeltaTime);
-            bool frozen = PlayFrozen;
+            bool frozen = PlayFrozen || quitConfirm;
             if (!game.IsOver && !frozen)
             {
                 if (TryGetTap(out var tap)) HandleTap(tap);
@@ -208,6 +229,7 @@ namespace Titan.Game
                 game.Tick(dt);
                 governor.AddPlaySeconds(dt);
                 frameMs[Mathf.Clamp(Mathf.RoundToInt(Time.unscaledDeltaTime * 1000f), 0, frameMs.Length - 1)]++;
+                if (hints.Update(game, dt)) SaveProfile();
             }
             if (game.Events.Count > 0) PlayEvents(); // also the Revived event of a revive granted from a card
             if ((session.Update(frozen ? 0f : Time.unscaledDeltaTime) & SessionSignal.NewRecord) != 0)
@@ -257,10 +279,13 @@ namespace Titan.Game
         void PlayEvents()
         {
             var signals = SessionSignal.None;
+            bool dailySave = false;
             foreach (var e in game.Events)
             {
                 view.Play(e);
                 TrackAdEvent(e);
+                hints.OnEvent(e);
+                if (session.IsDaily && daily.Process(e)) dailySave = true;
                 if (e.Kind == EventKind.TitanDefeated) DefeatBanner(e);
                 // A revivable loss waits for the "A doua suflare" card: the session hears about it only if the run really ends.
                 if (e.Kind == EventKind.GameOver && OfferSecondWind(e)) continue;
@@ -275,7 +300,7 @@ namespace Titan.Game
             }
             game.Events.Clear();
             if ((signals & SessionSignal.RunEnded) != 0) RunReallyEnded();
-            if ((signals & SessionSignal.Save) != 0) SaveProfile();
+            if ((signals & SessionSignal.Save) != 0 || dailySave) SaveProfile();
         }
 
         /// <summary>"TITAN DOBORÂT! +N" (or "LA MUSTAȚĂ!") with the titan's 3 stars popping in under it.</summary>
@@ -432,9 +457,14 @@ namespace Titan.Game
             EnsureStyles();
             float s = styleScale;
             float w = Screen.width;
-            if (launchOverlay)
+            if (screen == UiScreen.Menu)
             {
                 DrawLaunchOverlay(w, s);
+                return;
+            }
+            if (screen == UiScreen.Daily)
+            {
+                DrawDailyPanel(w, s, false);
                 return;
             }
             if (game == null) return;
@@ -444,7 +474,7 @@ namespace Titan.Game
             if (!game.IsOver) DangerBorder(danger);
 
             // Score (it pulses at 1 Hz while the record is in reach), record chase, cycle and titan number.
-            bool chase = !game.IsOver && HudText.ShowPbMarker(game.Score, session.BestAtStart);
+            bool chase = !game.IsOver && !session.IsDaily && HudText.ShowPbMarker(game.Score, session.BestAtStart);
             float pulse1Hz = chase && !Settings.ReducedFx ? 0.06f * Mathf.Sin(Time.time * 2f * Mathf.PI) : 0f;
             big.fontSize = Mathf.RoundToInt(54 * s * (1f + 0.3f * scorePunch + pulse1Hz));
             var scoreRect = new Rect(0, top + 10 * s, w, 70 * s);
@@ -457,14 +487,24 @@ namespace Titan.Game
                 under.normal.textColor = ArenaView.BannerGold;
                 Shadowed(new Rect(0, top + 76 * s, w, 22 * s), HudText.PbMarker(game.Score, session.BestAtStart), under);
             }
+            else if (session.IsDaily)
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), session.Start.Mode == Telemetry.ModeDailyPractice ? DailyText.Practice : "Încercarea oficială", under);
             else if (session.BestAtStart > 0 || game.Score > 0)
                 Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record " + HudText.Num(Mathf.Max(session.BestAtStart, game.Score)), under);
             else if (profile.legacyBest > 0)
                 Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record vechi (alt punctaj): " + HudText.Num(profile.legacyBest), under);
             ChainArc(new Vector2(w / 2f + 150 * s, scoreRect.center.y), s);
-            int cycle = TitanConfig.CycleIndex(game.Level);
-            Shadowed(new Rect(0, top + 98 * s, w, 26 * s), "Ciclul " + (cycle + 1) + " · Titanul #" + game.Level, small);
-            CycleDots(new Vector2(w / 2f, top + 136 * s), TitanConfig.CyclePosition(game.Level), s);
+            if (session.IsDaily)
+            {
+                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), DailyText.Title + " #" + session.Start.Day + " · Titanul " + game.Level + "/" + Daily.Titans, small);
+                DailySquares(new Vector2(w / 2f, top + 136 * s), game.TitansDefeated + game.StartTitan - 1, game.IsOver && game.Lost != LoseReason.Completed ? game.Level : 0, s, game.IsOver ? 0 : game.Level);
+            }
+            else
+            {
+                int cycle = TitanConfig.CycleIndex(game.Level);
+                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), "Ciclul " + (cycle + 1) + " · Titanul #" + game.Level, small);
+                CycleDots(new Vector2(w / 2f, top + 136 * s), TitanConfig.CyclePosition(game.Level), s);
+            }
 
             // How close the titan is to the wall.
             var bar = new Rect(w * 0.12f, top + 154 * s, w * 0.76f, 16 * s);
@@ -548,9 +588,19 @@ namespace Titan.Game
             }
             DrawBigPopup(s);
             DrawConfetti(s);
+            if (!game.IsOver) DrawHints(s);
+            if (session.IsDaily && !game.IsOver)
+            {
+                DrawDailyRunControls(w, s);
+                if (session == null) return; // left for the daily panel ("Înapoi", "Ieși", "Da, închei")
+            }
 
-            // A held game over shows the revive card instead of the results.
-            if (game.IsOver && pendingGameOver == null) DrawGameOver(w, s);
+            // A held game over shows the revive card instead of the results; a daily run shows its own panel.
+            if (game.IsOver && pendingGameOver == null)
+            {
+                if (session.IsDaily) DrawDailyPanel(w, s, true);
+                else DrawGameOver(w, s);
+            }
             DrawAdLayer(s);
         }
 

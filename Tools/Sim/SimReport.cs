@@ -211,6 +211,16 @@ namespace Titan.Sim
             w.WriteLine("'+1 Loc' trigger (>=4 taken, >=3 idle for 1.0 s) on " + F(100 * ExtraSlotTriggerShare, 1) + "% of " + ExtraSlotTitans + " titans n>=2 (ship check: >= 5%)");
         }
 
+        /// <summary>FTUE-1 mode: titan 1 is the scripted tutorial titan. Titan 1 defeated (target ≥ 99%) and the first piece after the first deploy (target median ≤ 6 s).</summary>
+        public static void PrintFtue(TextWriter w, BotKind bot, IList<GameStats> gs)
+        {
+            double titan1 = gs.Count == 0 ? 0 : (double)gs.Count(g => g.Defeated >= 1) / gs.Count;
+            var piece = gs.Where(g => g.FirstPieceAfterDeploy >= 0).Select(g => g.FirstPieceAfterDeploy).ToList();
+            w.WriteLine(bot + " FTUE: titan 1 defeated " + P(titan1) + " (target >= 99%); first piece after the first deploy p50 " + F(Pct(piece, .5), 1)
+                + " s p90 " + F(Pct(piece, .9), 1) + " s (target p50 <= 6 s; " + piece.Count + "/" + gs.Count + " games had a piece); first deploy p50 "
+                + F(Pct(gs.Where(g => g.FirstDeployAt >= 0).Select(g => g.FirstDeployAt), .5), 1) + " s; titans p50 " + F(Pct(gs.Select(g => (double)g.Defeated), .5), 0));
+        }
+
         /// <summary>ADS-2 revive mode: what one revive at the first loss is worth.</summary>
         public static void PrintRevive(TextWriter w, BotKind bot, float pushBack, IList<GameStats> gs)
         {

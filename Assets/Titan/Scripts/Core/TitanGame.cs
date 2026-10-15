@@ -193,6 +193,8 @@ namespace Titan.Core
         SlotsFull,
         /// <summary>"BLOCAT!": nothing could fire and no useful tap existed for DeadlockSeconds.</summary>
         Deadlock,
+        /// <summary>A run with a fixed number of titans (Titanul Zilei) was won: titan #MaxTitans fell. Shown as a win.</summary>
+        Completed,
     }
 
     public sealed class GameEvent
@@ -279,12 +281,24 @@ namespace Titan.Core
         /// <summary>Optional: titan n comes from here instead of MonsterBuilder when it returns non-null (scripted titans, tests).</summary>
         readonly Func<int, Monster> titanSource;
 
+        /// <summary>How this run differs from the endless game (FTUE titan, Titanul Zilei), or null.</summary>
+        public RunPlan Plan { get; }
+        /// <summary>0 = endless; otherwise the run is won (LoseReason.Completed) when titan #MaxTitans falls.</summary>
+        public int MaxTitans => Plan != null ? Plan.MaxTitans : 0;
+
+        /// <summary>
+        /// While true the titan does not walk (its step clock stands still). Set at the spawn of a titan the plan holds
+        /// (the FTUE titan, the first daily titan) and cleared by the first deploy (FTUE-1, RET-3).
+        /// </summary>
+        public bool HoldApproach { get; set; }
+
         /// <summary>One random stream for the whole run (tests, the simulator).</summary>
-        public TitanGame(TitanConfig config, IRandom rng, int startLevel = 1, Func<int, Monster> titanSource = null)
+        public TitanGame(TitanConfig config, IRandom rng, int startLevel = 1, Func<int, Monster> titanSource = null, RunPlan plan = null)
         {
             Config = config;
             this.rng = rng;
             this.titanSource = titanSource;
+            Plan = plan;
             Tray = new Cannon[config.TraySize];
             Line = new Cannon[config.LineSlots + 1];
             ActiveSlots = config.LineSlots;
@@ -297,12 +311,13 @@ namespace Titan.Core
         /// new SeededRandom(Derive(runSeed, n)), so the same seed gives the same titan n whatever happened before.
         /// A checkpoint restarts at <paramref name="startTitan"/> with the score it saved.
         /// </summary>
-        public TitanGame(TitanConfig config, long runSeed, int startTitan = 1, int startScore = 0, Func<int, Monster> titanSource = null)
+        public TitanGame(TitanConfig config, long runSeed, int startTitan = 1, int startScore = 0, Func<int, Monster> titanSource = null, RunPlan plan = null)
         {
             Config = config;
             seeded = true;
             RunSeed = runSeed;
             this.titanSource = titanSource;
+            Plan = plan;
             Tray = new Cannon[config.TraySize];
             Line = new Cannon[config.LineSlots + 1];
             ActiveSlots = config.LineSlots;
@@ -468,6 +483,7 @@ namespace Titan.Core
             Tray[traySlot] = null;
             cannon.Cooldown = Config.DeployDelay;
             Line[slot] = cannon;
+            HoldApproach = false; // the first tap starts the titan's walk
             Events.Add(new GameEvent { Kind = EventKind.Deployed, Slot = slot, TraySlot = traySlot, Color = cannon.Color });
             TrackLine();
 
@@ -488,18 +504,12 @@ namespace Titan.Core
             return true;
         }
 
-        /// <summary>Cubes of each color a cannon could shoot right now (index = color). Computed once per titan change.</summary>
+        /// <summary>Cubes of each color a cannon could shoot right now (index = color). A fresh copy; O(colors).</summary>
         public int[] VisibleCountByColor()
         {
-            if (visibleMonster != Monster || visibleEpoch != Monster.Epoch)
-            {
-                Array.Clear(visibleCounts, 0, visibleCounts.Length);
-                foreach (var kv in Monster.Cubes)
-                    if (Monster.IsVisible(kv.Key)) visibleCounts[kv.Value]++;
-                visibleMonster = Monster;
-                visibleEpoch = Monster.Epoch;
-            }
-            return (int[])visibleCounts.Clone();
+            var counts = new int[MonsterBuilder.MaxColors];
+            for (int color = 0; color < counts.Length; color++) counts[color] = Monster.VisibleCountOfColor(color);
+            return counts;
         }
 
         /// <summary>Colors that still have cubes but none of them visible (the "? culori ascunse" chip).</summary>
@@ -512,9 +522,6 @@ namespace Titan.Core
             return n;
         }
 
-        readonly int[] visibleCounts = new int[MonsterBuilder.MaxColors];
-        Monster visibleMonster;
-        int visibleEpoch;
 
         public void Tick(float dt)
         {
@@ -522,8 +529,8 @@ namespace Titan.Core
             GameTime += dt;
             TrackLine();
 
-            // The titan steps toward the wall.
-            stepTimer += dt;
+            // The titan steps toward the wall (not while it waits for the first tap).
+            if (!HoldApproach) stepTimer += dt;
             while (stepTimer >= Config.StepInterval && !IsOver)
             {
                 stepTimer -= Config.StepInterval;
@@ -663,11 +670,16 @@ namespace Titan.Core
                 Line[s] = null;
             }
 
+            // One pass over the deck and the tray: this runs every tick (CheckSlotsFull).
+            var deckBy = salvageDeck;
+            var trayBy = salvageTray;
+            Array.Clear(deckBy, 0, deckBy.Length);
+            Array.Clear(trayBy, 0, trayBy.Length);
+            foreach (var c in deck) deckBy[c.Color] += c.Ammo;
+            foreach (var c in Tray) if (c != null) trayBy[c.Color] += c.Ammo;
             for (int color = 0; color < MonsterBuilder.MaxColors; color++)
             {
-                int deckAmmo = 0, trayAmmo = 0, lineAmmo = 0;
-                foreach (var c in deck) if (c.Color == color) deckAmmo += c.Ammo;
-                foreach (var c in Tray) if (c != null && c.Color == color) trayAmmo += c.Ammo;
+                int deckAmmo = deckBy[color], trayAmmo = trayBy[color], lineAmmo = 0;
                 if (deckAmmo + trayAmmo == 0) continue;
                 for (int s = 0; s < ActiveSlots; s++) if (Line[s] != null && Line[s].Color == color) lineAmmo += Line[s].Ammo;
                 // Surplus counts the line too: ammo already on the wall covers its cubes first, so a falling piece
@@ -725,6 +737,8 @@ namespace Titan.Core
                 if (allEmpty) RefillTray();
             }
         }
+
+        readonly int[] salvageDeck = new int[MonsterBuilder.MaxColors], salvageTray = new int[MonsterBuilder.MaxColors];
 
         // ---------------------------------------------------------------- cut prediction ("TAIE!")
 
@@ -906,6 +920,11 @@ namespace Titan.Core
             TitansDefeated++;
             StarsEarned += Stars.Count(stars);
             Events.Add(new GameEvent { Kind = EventKind.TitanDefeated, Level = Level, Points = bonus, Role = Role, NearMiss = nearMiss, Distance = Distance, Stars = stars, MaxLine = MaxOccupiedLine });
+            if (MaxTitans > 0 && Level >= MaxTitans)
+            {
+                Lose(LoseReason.Completed); // the last titan of a fixed run fell: a win
+                return;
+            }
             SpawnTitan(Level + 1);
         }
 
@@ -931,10 +950,10 @@ namespace Titan.Core
         {
             Level = level;
             if (seeded) rng = new SeededRandom(SeededRandom.Derive(unchecked((ulong)RunSeed), (ulong)level));
-            BuildLevel = Config.BuildLevel(level);
-            Role = Config.RoleOf(level);
+            BuildLevel = Plan != null ? Plan.BuildLevelOf(level, Config) : Config.BuildLevel(level);
+            Role = Plan != null ? Plan.RoleOf(level, Config) : Config.RoleOf(level);
             int extraColors = Role == TitanRole.Boss && Config.BossExtraColor ? 1 : 0;
-            Monster = titanSource?.Invoke(level) ?? MonsterBuilder.Build(BuildLevel, rng, extraColors);
+            Monster = Plan?.Script?.BuildTitan(level) ?? titanSource?.Invoke(level) ?? MonsterBuilder.Build(BuildLevel, rng, extraColors);
             Monster.Order = Config.TargetOrder;
             Distance = Config.StartDistance;
             stepTimer = 0f;
@@ -946,12 +965,13 @@ namespace Titan.Core
             ActiveSlots = Config.LineSlots; // "+1 Loc" lasts until this titan falls
             ExtraSlotShots = 0;
             SpawnCubes = Monster.Count;
-            ApproachSeconds = Config.ApproachSeconds(level, Monster.Count);
+            ApproachSeconds = Config.ApproachSeconds(Plan != null ? Plan.ClockNOf(level) : level, Monster.Count);
+            HoldApproach = Plan != null && Plan.HoldsApproach(level);
             stepLength = Config.StartDistance / (ApproachSeconds / Config.StepInterval);
             for (int i = 0; i < Line.Length; i++) Line[i] = null;
             BuildDeck();
             Events.Add(new GameEvent { Kind = EventKind.TitanSpawned, Level = level, Role = Role, Score = Score });
-            RefillTray();
+            RefillTray(Plan?.Script?.StartingTray(level, Monster, Config));
         }
 
         /// <summary>Exactly enough ammo for every cube, split into cannons of 10–30 shots.</summary>
@@ -988,11 +1008,35 @@ namespace Titan.Core
             }
         }
 
-        void RefillTray()
+        /// <param name="fixedCannons">Scripted cannons by tray slot (FTUE-1); their ammo comes out of the deck first.</param>
+        void RefillTray(Cannon[] fixedCannons = null)
         {
             for (int i = 0; i < Tray.Length; i++) Tray[i] = null; // a new titan discards the old tray
-            for (int i = 0; i < Tray.Length; i++) Tray[i] = Draw(i);
+            if (fixedCannons != null)
+                for (int i = 0; i < Tray.Length && i < fixedCannons.Length; i++)
+                {
+                    var c = fixedCannons[i];
+                    if (c == null) continue;
+                    int taken = TakeFromDeck(c.Color, c.Ammo);
+                    if (taken > 0) Tray[i] = new Cannon(c.Color, taken);
+                }
+            for (int i = 0; i < Tray.Length; i++) if (Tray[i] == null) Tray[i] = Draw(i);
             Events.Add(new GameEvent { Kind = EventKind.TrayRefilled });
+        }
+
+        /// <summary>
+        /// Takes up to <paramref name="ammo"/> shots of a color out of the deck (the rest is re-split into cannons of
+        /// 10–30), so a scripted cannon keeps ammo == cubes. Returns the ammo taken.
+        /// </summary>
+        int TakeFromDeck(int color, int ammo)
+        {
+            int total = 0;
+            foreach (var c in deck) if (c.Color == color) total += c.Ammo;
+            int taken = Math.Min(Math.Max(0, ammo), total);
+            if (taken == 0) return 0;
+            deck.RemoveAll(c => c.Color == color);
+            if (total - taken > 0) AddCannons(color, total - taken);
+            return taken;
         }
 
         /// <summary>Draws the cannon for tray slot <paramref name="slot"/> (the other slots are already filled), or null if the deck is empty.</summary>

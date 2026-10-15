@@ -72,6 +72,8 @@ namespace Titan.Sim
         public float RevivePushBack = 0.25f;
         public float ReviveGraceSeconds = 2.0f;
         public float ReviveMinProgress = 0.15f;
+        /// <summary>FTUE-1 check: titan 1 is the scripted tutorial titan (it waits for the first tap). Not a balance run.</summary>
+        public bool Ftue;
     }
 
     /// <summary>Everything measured in one simulated run.</summary>
@@ -110,6 +112,8 @@ namespace Titan.Sim
         public bool ReviveOffered, Revived;
         public LoseReason FirstLossReason;
         public int DefeatedAtRevive;
+        /// <summary>FTUE mode: seconds from the start to the first deploy, and from the first deploy to the first fallen piece (−1: none).</summary>
+        public double FirstDeployAt = -1, FirstPieceAfterDeploy = -1;
         public double TimeAtRevive;
         public int DefeatedAfterRevive => Revived ? Defeated - DefeatedAtRevive : 0;
         public double SecondsAfterRevive => Revived ? RunTime - TimeAtRevive : 0;
@@ -176,7 +180,7 @@ namespace Titan.Sim
             options = options ?? new SimOptions();
             var rng = new SeededRandom(SeededRandom.Hash(seed, 1));
             var botRng = new SeededRandom(SeededRandom.Hash(seed, 2));
-            var g = new TitanGame(cfg, rng);
+            var g = new TitanGame(cfg, rng, 1, null, options.Ftue ? RunPlan.Tutorial() : null);
             var view = new BotView(g);
             var st = new GameStats { Bot = bot, Seed = seed };
             double t = 0, titanStart = 0, stuck = 0;
@@ -223,6 +227,7 @@ namespace Titan.Sim
                         int pick = Bots.Choose(bot, view, botRng);
                         if (pick >= 0 && g.Deploy(pick))
                         {
+                            if (st.FirstDeployAt < 0) st.FirstDeployAt = t;
                             if (g.IsOver) st.LostOnTap = true;
                             st.Taps++;
                             lastDecision = 0;
@@ -278,6 +283,7 @@ namespace Titan.Sim
                 float approach = g.ApproachSeconds;
                 g.Tick((float)Dt);
                 t += Dt;
+                if (st.FirstDeployAt >= 0 && st.FirstPieceAfterDeploy < 0 && g.Events.Exists(e => e.Kind == EventKind.PieceFell)) st.FirstPieceAfterDeploy = t - st.FirstDeployAt;
                 ReadEvents(g, st, ref level, ref titanStart, ref lastShotJoint, ref titan, t, distBefore, approach, cfg);
             }
             if (extraTitan >= 2)

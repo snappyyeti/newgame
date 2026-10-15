@@ -20,8 +20,11 @@ namespace Titan.Game
         void DrawGameOver(float w, float s)
         {
             bool hasCheckpoint = profile.HasCheckpoint;
+            bool showDaily = DailyButtonVisible;
+            bool tip = hints.Active == Ftue.H4GameOver;
             float footer = ResultsFooterHeight(s);
-            float height = (hasCheckpoint ? 690 : 610) * s + footer + (resultsButtonNote != null ? 3 * 18 * s : 0f);
+            float height = (hasCheckpoint ? 690 : 610) * s + footer + (resultsButtonNote != null ? 3 * 18 * s : 0f)
+                + (showDaily ? 76 * s : 0f) + (tip ? 70 * s : 0f);
             var panel = new Rect(w * 0.05f, Mathf.Max(Screen.height * 0.16f, (Screen.height - height) / 2f), w * 0.9f, height);
             GUI.color = new Color(0.08f, 0.08f, 0.12f, 0.88f);
             GUI.DrawTexture(panel, white);
@@ -34,6 +37,11 @@ namespace Titan.Game
             var reasonStyle = new GUIStyle(center) { fontSize = Mathf.RoundToInt(26 * s) };
             Shadowed(new Rect(panel.x, y, panel.width, 66 * s), reason, reasonStyle);
             y += 70 * s;
+            if (tip)
+            {
+                DrawGameOverTip(new Rect(panel.x + 12 * s, y, panel.width - 24 * s, 62 * s), s);
+                y += 70 * s;
+            }
 
             var scoreStyle = new GUIStyle(big) { fontSize = Mathf.RoundToInt(46 * s) };
             Shadowed(new Rect(panel.x, y, panel.width, 56 * s), HudText.Num(game.Score), scoreStyle);
@@ -55,7 +63,7 @@ namespace Titan.Game
 
             var goal = new GUIStyle(line);
             goal.normal.textColor = new Color(0.75f, 0.9f, 1f);
-            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), HudText.NextGoal(game.Level, profile.bestTitanN, false), goal);
+            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), HudText.NextGoal(game.Level, profile.bestTitanN, showDaily && daily.OfficialNotStarted), goal);
             y += 44 * s;
 
             float bw = panel.width * 0.6f;
@@ -97,46 +105,83 @@ namespace Titan.Game
             y += 66 * s;
             if (resultsButtonNote != null) GUI.Label(new Rect(panel.x, y, panel.width, noteH), resultsButtonNote, note);
             y += 10 * s + noteH;
+            if (showDaily)
+            {
+                // Opens the Titanul Zilei panel: never through the between-runs rules (no ad before the daily).
+                if (DailyButton(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), s))
+                {
+                    GUI.enabled = wasEnabled;
+                    OpenDailyPanel();
+                    return;
+                }
+                y += 76 * s;
+            }
             DrawResultsFooter(new Rect(panel.x, y, panel.width, footer), s);
             GUI.enabled = wasEnabled;
         }
 
-        /// <summary>App launch after 3+ runs with a checkpoint: "Continuă (titanul #n)" (primary, focused) or "Joc nou".</summary>
+        /// <summary>
+        /// The menu (the launch overlay after 3+ runs, RET-1 and RET-3): "Continuă (titanul #n)" (primary, focused) when
+        /// there is a checkpoint, "Joc nou", the "Titanul Zilei" button with its status and the real countdown to local
+        /// midnight, and the streak (with this launch's message: a shield used, or a new streak). No ad on any of them.
+        /// </summary>
         void DrawLaunchOverlay(float w, float s)
         {
-            GUI.color = new Color(0.05f, 0.06f, 0.1f, 0.9f);
+            GUI.color = new Color(0.05f, 0.06f, 0.1f, 0.94f);
             GUI.DrawTexture(new Rect(0, 0, w, Screen.height), white);
             GUI.color = Color.white;
             var cp = profile.checkpoint;
-            float y = Screen.height * 0.28f;
+            bool hasCheckpoint = profile.HasCheckpoint;
+            float y = Screen.height * 0.18f;
             Shadowed(new Rect(0, y, w, 60 * s), "Titanul din Cuburi", new GUIStyle(big) { fontSize = Mathf.RoundToInt(44 * s) });
             y += 80 * s;
             var note = new GUIStyle(small) { fontSize = Mathf.RoundToInt(19 * s), wordWrap = true };
             note.normal.textColor = new Color(0.8f, 0.85f, 0.95f);
-            Shadowed(new Rect(w * 0.1f, y, w * 0.8f, 52 * s), "Punct de salvare: același titan, cu scorul de atunci (" + HudText.Num(cp.score) + ").", note);
-            y += 70 * s;
+            if (daily.LaunchMessage != null)
+            {
+                var msg = new GUIStyle(note);
+                msg.normal.textColor = new Color(0.6f, 0.9f, 1f);
+                Shadowed(new Rect(w * 0.08f, y, w * 0.84f, 30 * s), daily.LaunchMessage, msg);
+                y += 40 * s;
+            }
             float bw = w * 0.7f;
-            GUI.SetNextControlName("continue");
-            bool go = GUI.Button(new Rect((w - bw) / 2f, y, bw, 100 * s), "Continuă (titanul #" + cp.n + ")", button);
-            GUI.FocusControl("continue");
-            var e = Event.current;
-            if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter || e.keyCode == KeyCode.Space))
+            bool go = false;
+            if (hasCheckpoint)
             {
-                go = true;
-                e.Use();
+                Shadowed(new Rect(w * 0.1f, y, w * 0.8f, 52 * s), "Punct de salvare: același titan, cu scorul de atunci (" + HudText.Num(cp.score) + ").", note);
+                y += 60 * s;
+                GUI.SetNextControlName("continue");
+                go = GUI.Button(new Rect((w - bw) / 2f, y, bw, 100 * s), "Continuă (titanul #" + cp.n + ")", button);
+                GUI.FocusControl("continue");
+                var e = Event.current;
+                if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter || e.keyCode == KeyCode.Space))
+                {
+                    go = true;
+                    e.Use();
+                }
+                if (go)
+                {
+                    StartRun(RunStart.FromCheckpoint(cp));
+                    return;
+                }
+                y += 116 * s;
             }
-            if (go)
-            {
-                StartRun(RunStart.FromCheckpoint(cp));
-                return;
-            }
-            y += 116 * s;
-            if (GUI.Button(new Rect((w - bw) / 2f, y, bw, 70 * s), "Joc nou", new GUIStyle(button) { fontSize = Mathf.RoundToInt(26 * s) }))
+            if (GUI.Button(new Rect((w - bw) / 2f, y, bw, hasCheckpoint ? 70 * s : 100 * s), hasCheckpoint ? "Joc nou" : "Joacă", hasCheckpoint ? new GUIStyle(button) { fontSize = Mathf.RoundToInt(26 * s) } : button))
             {
                 var start = RunSession.NewGameStart(profile, NewSeed());
                 SaveProfile();
                 StartRun(start);
+                return;
             }
+            y += (hasCheckpoint ? 70 : 100) * s + 24 * s;
+            if (DailyButton(new Rect((w - bw) / 2f, y, bw, 76 * s), s))
+            {
+                OpenDailyPanel();
+                return;
+            }
+            y += 86 * s;
+            if (profile.streak.current > 0 || profile.streak.best > 0)
+                Shadowed(new Rect(w * 0.1f, y, w * 0.8f, 26 * s), StreakLine(), note);
         }
 
         /// <summary>A small dark chip with one line (the checkpoint toast). It never covers the tray.</summary>

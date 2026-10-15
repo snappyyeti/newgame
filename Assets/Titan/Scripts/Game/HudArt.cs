@@ -79,6 +79,12 @@ namespace Titan.Game
             return d < 0.44f && d > 0.32f;
         }));
 
+        static Texture2D arrowDown;
+
+        /// <summary>A down-pointing arrow (FTUE hint H3 points at the slot pips with it).</summary>
+        public static Texture2D ArrowDown => arrowDown != null ? arrowDown : (arrowDown = Make("arrow-down", (x, y) =>
+            (y > 0.02f && y < 0.44f && Mathf.Abs(x) < 0.11f) || (y <= 0.06f && y > -0.42f && Mathf.Abs(x) < 0.40f * (y + 0.42f) / 0.48f)));
+
         public static Texture2D Crown => crown != null ? crown : (crown = Make("crown", (x, y) =>
         {
             if (y < -0.34f || y > 0.40f || Mathf.Abs(x) > 0.44f) return false;

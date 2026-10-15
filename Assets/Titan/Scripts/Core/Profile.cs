@@ -34,6 +34,10 @@ namespace Titan.Core
         public List<LogEntry> log = new List<LogEntry>();
         /// <summary>The best of the old scoring ("titan_best"), shown once as "Record vechi", never compared.</summary>
         public int legacyBest;
+        /// <summary>Titanul Zilei (RET-3): today's cached salt and the official attempt.</summary>
+        public DailyState daily = new DailyState();
+        /// <summary>The forgiving daily streak with shields (RET-3).</summary>
+        public StreakState streak = new StreakState();
 
         public bool HasCheckpoint => checkpoint != null && checkpoint.n > 1;
 
@@ -43,6 +47,8 @@ namespace Titan.Core
             if (checkpoint == null) checkpoint = new Checkpoint();
             if (settings == null) settings = new ProfileSettings();
             if (log == null) log = new List<LogEntry>();
+            if (daily == null) daily = new DailyState();
+            if (streak == null) streak = new StreakState();
             if (settings.lang == null) settings.lang = "";
             if (version < 1) version = CurrentVersion;
             TrimLog(Telemetry.LogRingSize);
@@ -76,6 +82,46 @@ namespace Titan.Core
         public int n;
         public int score;
         public long runSeed;
+    }
+
+    /// <summary>
+    /// Titanul Zilei (RET-3, DESIGN.md 9.4) for one local day: the salt the validator picked (computed once per day)
+    /// and the official attempt. A new day resets all of it.
+    /// </summary>
+    [Serializable]
+    public sealed class DailyState
+    {
+        /// <summary>The day this state belongs to (Profile.NoDay: never).</summary>
+        public int day = Profile.NoDay;
+        /// <summary>The cached DailyValidator pick for <see cref="day"/>: salt 0-3 (−1: not computed yet).</summary>
+        public int salt = -1;
+        /// <summary>The validator found no fair salt: salt 0 with the easier build levels.</summary>
+        public bool fallback;
+        /// <summary>The official attempt: 0 not started, 1 in progress (resumable), 2 finished.</summary>
+        public int status;
+        /// <summary>Titans defeated in the official attempt (0-3).</summary>
+        public int defeated;
+        /// <summary>Score after the last defeated titan (in progress), or the final score.</summary>
+        public int score;
+        /// <summary>Pieces cut and seconds played over the whole attempt (resumes included).</summary>
+        public int pieces;
+        public float seconds;
+        /// <summary>The titan the finished attempt ended on (0: all 3 defeated).</summary>
+        public int lostOn;
+        /// <summary>Best "ANTRENAMENT" score of this day (practice never changes the official result).</summary>
+        public int bestPracticeScore;
+    }
+
+    /// <summary>The forgiving streak (RET-3, DESIGN.md 9.5): official attempts on consecutive days, with up to 2 shields.</summary>
+    [Serializable]
+    public sealed class StreakState
+    {
+        public int current;
+        public int best;
+        /// <summary>The last day that counts for the streak (an official attempt, or a day a shield covered).</summary>
+        public int lastDay = Profile.NoDay;
+        public int shields;
+        public bool firstDailyDone;
     }
 
     [Serializable]
@@ -154,7 +200,8 @@ namespace Titan.Core
         public const int LogRingSize = 300;
 
         public const string SessionStart = "session_start"; // (day, daysSinceLast)
-        public const string Ftue = "ftue";                  // (step, 0)
+        /// <summary>Superseded by the FTUE-1 funnel names below (<see cref="TutStep"/>); never emitted.</summary>
+        public const string Ftue = "ftue";
         public const string RunStart = "run_start";         // (startTitan, mode)
         public const string TitanSpawn = "titan_spawn";     // (n, role)
         public const string TitanDefeat = "titan_defeat";   // (n, seconds)
@@ -162,6 +209,20 @@ namespace Titan.Core
         public const string Perf = "perf";                  // (p95 ms, n)
         public const string RestartMs = "restart_ms";       // (ms, 0)
         public const string SaveCorrupt = "save_corrupt";   // (source, 0): 0 file, 1 PlayerPrefs
+
+        // FTUE-1 funnel (names are stable).
+        public const string TitanReached = "titan_n_reached";                 // (n, run number): a titan reached for the first time ever (endless)
+        public const string RunLength = "run_length";                         // (seconds, reason): every run end, next to run_end(n, reason)
+        public const string Run3SameSession = "run_3_started_same_session";   // (0, 0): the 3rd run of the install started in the session of the 1st
+        /// <summary>"tut_step_{1..4}_shown" / "tut_step_{1..4}_done" (step, 0).</summary>
+        public static string TutStep(int step, bool done) => "tut_step_" + step + (done ? "_done" : "_shown");
+
+        // RET-3 Titanul Zilei.
+        public const string DailyStart = "daily_start";     // (day, mode): the official attempt started (first deploy), or a practice run
+        public const string DailyEnd = "daily_end";         // (day, titans defeated): the official attempt was finalized
+        public const string Streak = "streak";              // (new, old) whenever the streak number changes
+        public const string ShieldUsed = "shield_used";     // (gap, shields left)
+        public const string ShareTap = "share_tap";         // (day, 0)
 
         /// <summary>run_start modes.</summary>
         public const int ModeEndless = 0, ModeDailyOfficial = 1, ModeDailyPractice = 2, ModeCheckpoint = 3;

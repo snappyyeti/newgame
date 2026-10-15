@@ -484,6 +484,39 @@ namespace Titan.Game
             return best;
         }
 
+        /// <summary>GUI position (y down) of tray slot i's hit circle center: the same circle <see cref="TrayAtScreen"/> uses.</summary>
+        public Vector2? TrayHitCenter(int i)
+        {
+            if (trayPos == null || i < 0 || i >= trayPos.Length) return null;
+            var p = cam.WorldToScreenPoint(trayPos[i] + Vector3.up * 0.7f);
+            if (p.z <= 0) return null;
+            return new Vector2(p.x, Screen.height - p.y);
+        }
+
+        /// <summary>Radius (pixels) of the tray hit circles.</summary>
+        public float TrayHitRadius => Screen.height * 0.09f;
+
+        /// <summary>GUI y of the top of the tray area (the highest hit circle's top): hints stay above it.</summary>
+        public float TrayTopGui()
+        {
+            float top = Screen.height;
+            for (int i = 0; i < trayPos.Length; i++)
+            {
+                var c = TrayHitCenter(i);
+                if (c.HasValue) top = Mathf.Min(top, c.Value.y - TrayHitRadius);
+            }
+            return top;
+        }
+
+        /// <summary>GUI position of firing slot s (the cannon's middle on the wall), or null.</summary>
+        public Vector2? LineSlotCenter(int s)
+        {
+            if (slotPos == null || s < 0 || s >= slotPos.Length) return null;
+            var p = cam.WorldToScreenPoint(slotPos[s] + Vector3.up * 0.6f);
+            if (p.z <= 0) return null;
+            return new Vector2(p.x, Screen.height - p.y);
+        }
+
         /// <summary>Screen position (GUI coordinates, y down) above a tray cannon or a line cannon, or null.</summary>
         public Vector2? TrayLabel(int i) => Label(tray[i]);
         public Vector2? LineLabel(int s) => Label(line[s]);
@@ -1002,6 +1035,11 @@ namespace Titan.Game
 
         IEnumerator GameOver(LoseReason reason)
         {
+            if (reason == LoseReason.Completed)
+            {
+                fx.RecordFanfare(); // Titanul Zilei won: the last titan fell, nothing smashes the wall
+                yield break;
+            }
             fx.Lose();
             if (reason != LoseReason.WallReached || monsterRoot == null) yield break;
             // The titan smashes into the wall.

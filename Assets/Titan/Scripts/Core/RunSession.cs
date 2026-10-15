@@ -10,6 +10,12 @@ namespace Titan.Core
         public int Titan;
         public int Score;
         public int Mode;
+        /// <summary>How the run differs from the endless game (FTUE titan, Titanul Zilei), or null.</summary>
+        public RunPlan Plan;
+        /// <summary>Titanul Zilei: the local day of the challenge.</summary>
+        public int Day;
+
+        public bool IsDaily => Daily.IsDailyMode(Mode);
 
         /// <summary>A new run from titan 1.</summary>
         public static RunStart Fresh(long seed) => new RunStart { Seed = seed, Titan = 1, Score = 0, Mode = Telemetry.ModeEndless };
@@ -38,6 +44,8 @@ namespace Titan.Core
     /// One run and what it changes in the profile (RET-1, RET-2): telemetry, best score, furthest titan, run count, the
     /// free checkpoints at cycle starts and the record chase. Pure C#: the game feeds it the core's events and acts on
     /// the signals (save, toast, banner). Nothing here knows about ads (ethics lock: checkpoints are never ad-gated).
+    /// A Titanul Zilei run (RET-3) counts as a run but never touches the endless record, the furthest titan or the
+    /// checkpoint: its own result lives in <see cref="DailyChallenge"/>.
     /// </summary>
     public sealed class RunSession
     {
@@ -50,6 +58,12 @@ namespace Titan.Core
 
         /// <summary>At app launch: show "Continuă (titanul #n)" / "Joc nou" instead of starting at once.</summary>
         public static bool ShowLaunchOverlay(Profile p) => p.totalRuns >= LaunchOverlayMinRuns && p.HasCheckpoint;
+
+        /// <summary>
+        /// At app launch, with Titanul Zilei (RET-3): after 3+ runs the overlay also shows when today's official attempt
+        /// is still open (not tried, or to continue) or a streak message waits. The first 3 runs always start at once (FTUE).
+        /// </summary>
+        public static bool ShowLaunchOverlay(Profile p, bool dailyWaiting) => p.totalRuns >= LaunchOverlayMinRuns && (p.HasCheckpoint || dailyWaiting);
 
         /// <summary>"Reia ciclul (titanul #n)": the saved checkpoint, or null when there is none.</summary>
         public static RunStart? ResumeStart(Profile p) => p.HasCheckpoint ? RunStart.FromCheckpoint(p.checkpoint) : (RunStart?)null;
@@ -84,14 +98,15 @@ namespace Titan.Core
             Start = start;
             BestAtStart = profile.bestScore;
             BestTitanAtStart = profile.bestTitanN;
-            Game = new TitanGame(cfg, start.Seed, start.Titan, start.Score, titanSource);
+            Game = new TitanGame(cfg, start.Seed, start.Titan, start.Score, titanSource, start.Plan);
             telemetry?.Track(Telemetry.RunStart, Game.StartTitan, start.Mode);
         }
 
-        /// <summary>The score beat the record this run started with (any score beats a record of 0).</summary>
-        public bool NewBest => Game.Score > BestAtStart;
-        /// <summary>This run reached a titan never reached before.</summary>
-        public bool NewFurthest => Game.Level > BestTitanAtStart;
+        public bool IsDaily => Start.IsDaily;
+        /// <summary>The score beat the record this run started with (any score beats a record of 0). Never for a daily run.</summary>
+        public bool NewBest => !IsDaily && Game.Score > BestAtStart;
+        /// <summary>This run reached a titan never reached before. Never for a daily run.</summary>
+        public bool NewFurthest => !IsDaily && Game.Level > BestTitanAtStart;
 
         /// <summary>"Joacă din nou": the same start as this run; a new seed when it started at titan 1.</summary>
         public RunStart PlayAgainStart(long newSeed) => Start.Titan <= 1 ? RunStart.Fresh(newSeed) : Start;
@@ -105,7 +120,12 @@ namespace Titan.Core
                 case EventKind.TitanSpawned:
                     telemetry?.Track(Telemetry.TitanSpawn, e.Level, (int)e.Role);
                     titanStartTime = Game.GameTime;
-                    if (e.Level > Profile.bestTitanN) Profile.bestTitanN = e.Level;
+                    if (IsDaily) break;
+                    if (e.Level > Profile.bestTitanN)
+                    {
+                        telemetry?.Track(Telemetry.TitanReached, e.Level, Profile.totalRuns + 1); // the FTUE funnel: how far players get
+                        Profile.bestTitanN = e.Level;
+                    }
                     if (e.Level > BestTitanAtStart && BestTitanAtStart > 0 && !FurthestAnnounced)
                     {
                         FurthestAnnounced = true;
@@ -124,6 +144,7 @@ namespace Titan.Core
                     signal |= SessionSignal.Save;
                     break;
                 case EventKind.GameOver:
+                    telemetry?.Track(Telemetry.RunLength, (int)Math.Round(Seconds), (int)e.Reason);
                     telemetry?.Track(Telemetry.RunEnd, e.Level, (int)e.Reason);
                     Profile.totalRuns++;
                     KeepBest();
@@ -141,7 +162,7 @@ namespace Titan.Core
                 Seconds += realDt;
                 Profile.totalPlaySeconds += realDt;
             }
-            if (!RecordAnnounced && BestAtStart > 0 && Game.Score > BestAtStart)
+            if (!RecordAnnounced && !IsDaily && BestAtStart > 0 && Game.Score > BestAtStart)
             {
                 RecordAnnounced = true;
                 return SessionSignal.NewRecord;
@@ -151,7 +172,7 @@ namespace Titan.Core
 
         void KeepBest()
         {
-            if (Game.Score > Profile.bestScore) Profile.bestScore = Game.Score;
+            if (!IsDaily && Game.Score > Profile.bestScore) Profile.bestScore = Game.Score;
         }
     }
 

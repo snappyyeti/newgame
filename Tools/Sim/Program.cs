@@ -26,6 +26,8 @@ namespace Titan.Sim
   --static           also print the titan composition table per level
   --revive [LIST]    ADS-2 measurement ONLY (not balance): revive once at the first loss with each push-back in
                      LIST (default 0.25,0.40,0.60) and report what the revive is worth; helpers stay OFF otherwise
+  --ftue             FTUE-1 check ONLY (not balance): titan 1 is the scripted tutorial titan; reports titan 1
+                     defeated and the time from the first deploy to the first fallen piece
   --help             this text";
 
         static int Main(string[] args)
@@ -37,6 +39,7 @@ namespace Titan.Sim
             var sets = new List<string>();
             bool showStatic = false;
             List<float> revivePushes = null;
+            bool ftue = false;
 
             try
             {
@@ -51,6 +54,7 @@ namespace Titan.Sim
                         case "--set": sets.Add(Next(args, ref i)); break;
                         case "--bots": bots = Next(args, ref i).Split(',').Select(Bots.Parse).Distinct().ToList(); break;
                         case "--static": showStatic = true; break;
+                        case "--ftue": ftue = true; break;
                         case "--revive":
                             revivePushes = new List<float> { 0.25f, 0.40f, 0.60f };
                             if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
@@ -91,6 +95,13 @@ namespace Titan.Sim
                 foreach (var w in warnings) Console.WriteLine("   - " + w);
             }
             if (showStatic) Static(cfg);
+
+            if (ftue)
+            {
+                Console.WriteLine("FTUE-1 check (NOT a balance run): titan 1 = the scripted tutorial titan, waits for the first tap");
+                foreach (var bot in bots) BotSummary.PrintFtue(Console.Out, bot, SimRunner.RunMany(bot, cfg, games, seed, new SimOptions { Ftue = true }));
+                return 0;
+            }
 
             if (revivePushes != null)
             {

@@ -67,6 +67,8 @@ namespace Titan.Core
         readonly Dictionary<Int3, int> cubes = new Dictionary<Int3, int>();
         readonly HashSet<Int3> anchored = new HashSet<Int3>();
         readonly int[] colorCount = new int[MonsterBuilder.MaxColors];
+        /// <summary>Visible cubes (the front of their column) per color, kept up to date by Set and Delete.</summary>
+        readonly HashSet<Int3>[] visibleByColor = new HashSet<Int3>[MonsterBuilder.MaxColors];
         readonly HashSet<Int3>[] byColor = new HashSet<Int3>[MonsterBuilder.MaxColors];
         // Tags never change after the build, so clones share them until someone calls Set or MarkGlove on a clone.
         Dictionary<Int3, byte> part = new Dictionary<Int3, byte>();
@@ -81,7 +83,11 @@ namespace Titan.Core
 
         public Monster()
         {
-            for (int c = 0; c < byColor.Length; c++) byColor[c] = new HashSet<Int3>();
+            for (int c = 0; c < byColor.Length; c++)
+            {
+                byColor[c] = new HashSet<Int3>();
+                visibleByColor[c] = new HashSet<Int3>();
+            }
         }
 
         /// <summary>Target rule, set by <see cref="TitanGame"/> from <see cref="TitanConfig.TargetOrder"/> at spawn.</summary>
@@ -166,7 +172,31 @@ namespace Titan.Core
             if (color < 0 || color >= MonsterBuilder.MaxColors) throw new ArgumentOutOfRangeException(nameof(color));
             if (bodyPart < 0 || bodyPart >= MaxParts) throw new ArgumentOutOfRangeException(nameof(bodyPart));
             OwnTags();
-            if (cubes.ContainsKey(c)) Forget(c);
+            if (cubes.TryGetValue(c, out int old))
+            {
+                Forget(c);
+                if (visibleByColor[old].Remove(c)) visibleByColor[color].Add(c);
+            }
+            else
+            {
+                // The new cube is visible when it stands in front of the column's current front (which then hides).
+                int frontZ = -1;
+                for (int z = 0; z <= MaxZ; z++)
+                    if (cubes.ContainsKey(new Int3(c.X, c.Y, z)))
+                    {
+                        frontZ = z;
+                        break;
+                    }
+                if (frontZ < 0 || c.Z < frontZ)
+                {
+                    visibleByColor[color].Add(c);
+                    if (frontZ >= 0)
+                    {
+                        var front = new Int3(c.X, c.Y, frontZ);
+                        visibleByColor[cubes[front]].Remove(front);
+                    }
+                }
+            }
             cubes[c] = color;
             colorCount[color]++;
             byColor[color].Add(c);
@@ -200,6 +230,19 @@ namespace Titan.Core
         {
             int color = cubes[c];
             cubes.Remove(c);
+            if (visibleByColor[color].Remove(c))
+            {
+                // It was the front of its column: the next cube behind it (if any) shows now.
+                for (int z = c.Z + 1; z <= MaxZ; z++)
+                {
+                    var behind = new Int3(c.X, c.Y, z);
+                    if (cubes.TryGetValue(behind, out int behindColor))
+                    {
+                        visibleByColor[behindColor].Add(behind);
+                        break;
+                    }
+                }
+            }
             colorCount[color]--;
             byColor[color].Remove(c);
             remainingPartSize[PartOf(c)]--;
@@ -214,6 +257,7 @@ namespace Titan.Core
                 m.cubes[kv.Key] = kv.Value;
                 m.byColor[kv.Value].Add(kv.Key);
             }
+            for (int c = 0; c < visibleByColor.Length; c++) m.visibleByColor[c].UnionWith(visibleByColor[c]);
             foreach (var a in anchored) m.anchored.Add(a);
             m.part = part;
             m.joints = joints;
@@ -244,13 +288,14 @@ namespace Titan.Core
         /// <summary>Cubes of this color still standing. O(1).</summary>
         public int CountOfColor(int color) => color >= 0 && color < colorCount.Length ? colorCount[color] : 0;
 
-        public bool HasVisibleOfColor(int color)
-        {
-            if (color < 0 || color >= byColor.Length) return false;
-            foreach (var c in byColor[color])
-                if (IsVisible(c)) return true;
-            return false;
-        }
+        /// <summary>True when a cube of this color is visible. O(1): the visible counts are kept up to date.</summary>
+        public bool HasVisibleOfColor(int color) => color >= 0 && color < visibleByColor.Length && visibleByColor[color].Count > 0;
+
+        /// <summary>Visible cubes of this color (front of their column). O(1).</summary>
+        public int VisibleCountOfColor(int color) => color >= 0 && color < visibleByColor.Length ? visibleByColor[color].Count : 0;
+
+        /// <summary>The visible cubes of this color (do not modify).</summary>
+        public IEnumerable<Int3> VisibleOfColor(int color) => visibleByColor[color];
 
         /// <summary>Support distance of a standing cube (0 = anchored), or -1 if it is not standing.</summary>
         public int SupportDistance(Int3 c)
@@ -301,15 +346,14 @@ namespace Titan.Core
         public bool PickTarget(int color, float cannonX, out Int3 target)
         {
             target = default;
-            if (color < 0 || color >= byColor.Length) return false;
+            if (color < 0 || color >= byColor.Length || visibleByColor[color].Count == 0) return false;
             bool farthest = Order == TargetOrder.FarthestFirst;
             if (farthest) EnsureSupportDist();
             bool found = false;
             float bestDx = 0;
             int bestDist = 0;
-            foreach (var c in byColor[color])
+            foreach (var c in visibleByColor[color]) // every key below is total (one visible cube per column): order-independent
             {
-                if (!IsVisible(c)) continue;
                 int dist = 0;
                 if (farthest && !supportDist.TryGetValue(c, out dist)) dist = int.MaxValue; // loose: cannot happen after DropUnsupported
                 float dx = Math.Abs(c.X - cannonX);
@@ -360,9 +404,13 @@ namespace Titan.Core
             Epoch++;
 
             // 1) Cubes that lost every shortest support path (processed by increasing distance).
-            var invalid = new HashSet<Int3>();
-            var queued = new HashSet<Int3>();
-            var queue = new Queue<Int3>();
+            // Big leftovers (after a fallen limb) are dropped rather than cleared: Clear zeroes the whole capacity.
+            if (rmInvalid.Count > ScratchKeep) rmInvalid = new HashSet<Int3>(); else rmInvalid.Clear();
+            if (rmQueued.Count > ScratchKeep) rmQueued = new HashSet<Int3>(); else rmQueued.Clear();
+            rmQueue.Clear();
+            var invalid = rmInvalid;
+            var queued = rmQueued;
+            var queue = rmQueue;
             foreach (var d in Int3.Neighbours)
             {
                 var n = c + d;
@@ -394,8 +442,10 @@ namespace Titan.Core
 
             // 2) New distances for them, from the cubes around that kept theirs (bucketed BFS, unit steps).
             foreach (var u in invalid) supportDist.Remove(u);
-            var best = new Dictionary<Int3, int>();
-            var buckets = new List<List<Int3>>();
+            if (rmBest.Count > ScratchKeep) rmBest = new Dictionary<Int3, int>(); else rmBest.Clear();
+            var best = rmBest;
+            var buckets = rmBuckets;
+            foreach (var b in buckets) b?.Clear();
             foreach (var u in invalid)
             {
                 int b = int.MaxValue;
@@ -437,6 +487,13 @@ namespace Titan.Core
             if (buckets[dist] == null) buckets[dist] = new List<Int3>();
             buckets[dist].Add(c);
         }
+
+        // Scratch collections of Remove, reused so a shot allocates nothing on the common path (not shared by clones).
+        const int ScratchKeep = 48;
+        HashSet<Int3> rmInvalid = new HashSet<Int3>(), rmQueued = new HashSet<Int3>();
+        readonly Queue<Int3> rmQueue = new Queue<Int3>();
+        Dictionary<Int3, int> rmBest = new Dictionary<Int3, int>();
+        readonly List<List<Int3>> rmBuckets = new List<List<Int3>>();
 
         /// <summary>
         /// Drops every cube no longer connected to an anchored cube, grouped into connected pieces (full BFS).

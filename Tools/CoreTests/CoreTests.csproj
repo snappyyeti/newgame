@@ -12,6 +12,9 @@
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- The core is compiled into this assembly: optimize it so the simulation-heavy tests (balance, the daily
+         validator's "30 days < 2 s") measure real speed even in the default Debug configuration. -->
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>

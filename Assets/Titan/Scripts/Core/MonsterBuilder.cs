@@ -27,6 +27,12 @@ namespace Titan.Core
     /// joints are tagged as body, and the arm color never matches the joints or the head.
     /// Every level is bigger, deeper and uses more colors.
     /// </summary>
+    /// <summary>The colors of every body region of a titan (palette indices 0-5).</summary>
+    public struct TitanColors
+    {
+        public int Boot, Leg, Torso, Core, Belt, Joint, Arm, Neck, Head, Eye;
+    }
+
     public static class MonsterBuilder
     {
         public const int MaxColors = 6;
@@ -43,19 +49,6 @@ namespace Titan.Core
             Shuffle(palette, rng);
             palette = palette.GetRange(0, colorCount);
 
-            int depth = Math.Min(2 + (level - 1) / 3, 4);
-            int legH = 3 + (level - 1) / 3;
-            int legW = level >= 4 ? 3 : 2;
-            int gap = level >= 3 ? 3 : 1;              // odd, so the titan stays symmetric
-            int half = Math.Max(legW + gap / 2, 1 + (level + 1) / 2);
-            half = Math.Min(half, 7);
-            int torsoH = Math.Min(4 + level, 11);
-            int armW = 2;
-            int armH = Math.Min(torsoH - 1 + (level - 1) / 3, torsoH + legH - 2);
-            int headHalf = Math.Min(2 + (level - 1) / 3, half);
-            int headH = Math.Min(3 + (level - 1) / 3, 6);
-            int neckHalf = level >= 6 ? 1 : 0;
-
             // The arm color never matches a joint (shoulder, neck) or the head: an arm cannon eats its arm from the
             // hand up and never cuts anything by itself (DESIGN.md 4.2.3). The hand has the arm color.
             int boot = Pick(palette, rng);
@@ -68,6 +61,31 @@ namespace Titan.Core
             int neck = Pick(palette, rng, torso, arm);
             int head = Pick(palette, rng, neck, arm);
             int eye = Pick(palette, rng, head);
+
+            return Build(level, new TitanColors { Boot = boot, Leg = leg, Torso = torso, Core = core, Belt = belt, Joint = joint, Arm = arm, Neck = neck, Head = head, Eye = eye });
+        }
+
+        /// <summary>
+        /// The titan of <paramref name="level"/> with a fixed palette (scripted titans, FTUE-1). Uses no random numbers:
+        /// the shape depends on the level only.
+        /// </summary>
+        public static Monster Build(int level, TitanColors colors)
+        {
+            level = Math.Max(1, level);
+            int boot = colors.Boot, leg = colors.Leg, torso = colors.Torso, core = colors.Core, belt = colors.Belt;
+            int joint = colors.Joint, arm = colors.Arm, neck = colors.Neck, head = colors.Head, eye = colors.Eye;
+            int depth = Math.Min(2 + (level - 1) / 3, 4);
+            int legH = 3 + (level - 1) / 3;
+            int legW = level >= 4 ? 3 : 2;
+            int gap = level >= 3 ? 3 : 1;              // odd, so the titan stays symmetric
+            int half = Math.Max(legW + gap / 2, 1 + (level + 1) / 2);
+            half = Math.Min(half, 7);
+            int torsoH = Math.Min(4 + level, 11);
+            int armW = 2;
+            int armH = Math.Min(torsoH - 1 + (level - 1) / 3, torsoH + legH - 2);
+            int headHalf = Math.Min(2 + (level - 1) / 3, half);
+            int headH = Math.Min(3 + (level - 1) / 3, 6);
+            int neckHalf = level >= 6 ? 1 : 0;
 
             var m = new Monster();
 
