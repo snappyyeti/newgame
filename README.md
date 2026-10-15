@@ -1,67 +1,59 @@
-# Human Cannon (Omul-Ghiulea)
+# Splash Sort: prototip de test (cuburi gri)
 
-Puzzle 3D infinit de sortare pentru iOS și Android, în Unity. Un tun de circ aruncă grupuri de omuleți colorați pe 7 piedestale; 5 de aceeași culoare în vârf dispar, iar runda ține până nu mai încape niciun grup.
-
-Acesta este **pasul 1 din MVP (prototipul gri)** plus miezul regizorului de grupuri (pasul 3).
+Puzzle de sortare: tragi colaci cu înotători colorați în 12 piscine, iar stivele vecine de aceeași culoare se unesc singure. 10 de aceeași culoare în vârf fac SPLASH.
 
 ## Cum îl deschizi
 
-1. Pe GitHub: **Code → Download ZIP**, apoi dezarhivezi într-un folder nou.
-2. Unity Hub → **Add** → **Add project from disk** → folderul dezarhivat. Versiunea fixată e Unity `6000.6.3f1`; merge și orice Unity 6 (6000.x).
-3. La prima deschidere, `Assets/HumanCannon/Editor/ProjectSetup.cs` pregătește singur proiectul: deschide scena `Main`, setează portret, fereastră 540×1170 pe Windows și Direct3D 11. Dacă Unity rulează pe Direct3D 12, te întreabă o dată dacă repornește. Spune **Repornește**: pe unele plăci video, Direct3D 12 desenează interfața editorului în roz.
-4. În **Game** alege o rezoluție portret (de exemplu 1080×2340) și apasă **Play**. Scena e goală intenționat: `GameController` construiește arena din primitive la pornire, deci jocul pornește din orice scenă.
+1. Pe GitHub: **Code → Download ZIP**, apoi dezarhivezi într-un folder **nou**. Nu peste un proiect vechi.
+2. Unity Hub → **Add** → **Add project from disk** → folderul dezarhivat → Unity `6000.6.3f1` (merge orice Unity 6).
+3. La prima deschidere:
+   - Dacă Unity întreabă de **Input System** („enable the new backends?”), apasă **Yes**. Unity repornește.
+   - Scriptul `Assets/SplashSort/Editor/ProjectSetup.cs` deschide scena `Main`, setează portret și Direct3D 11. Dacă te întreabă dacă repornește, apasă **Repornește**.
+4. În **Game** alege o rezoluție portret (de exemplu 1080×2340) și apasă **Play**.
 
-Control: click/atingere pe un piedestal = tragi; click pe platforma galbenă din dreapta = rezervă.
+Control: apeși pe un colac de jos, îl tragi peste o piscină goală (se face verde) și dai drumul.
 
-## Ce e implementat
+## Regulile
 
-| Parte | Stare |
-|---|---|
-| Regulile 1–7 (grup, tragere, eliminare, lanț, rezervă, coadă, final) | ✅ `Core/Resolver.cs`, `Core/Round.cs` |
-| Scor: ×pasul lanțului, dublu peste 5, arena curată +500 | ✅ |
-| Cele 4 praguri vizibile + mesajul „Un artist nou intră în arenă!” | ✅ |
-| Regizorul: 40 de candidați, tabla prezisă, nota, percentila H, ținta 1 − D | ✅ `Core/Director.cs` |
-| Modurile Ajutor și Normal, curba de bază 0,25 → 0,60 (plafon 0,70), zgomot ±0,05 | ✅ |
-| Regulile ascunse ReviveClearWave, NewUserBoost, LossStreakMercy, Bază | ✅ `Core/HiddenRules.cs` |
-| Revive: elefantul dărâmă cele 3 piedestale cele mai înalte, ReviveBonus 0–10% din record | ✅ (animație gri) |
-| Toate numerele în `GameConfig`, cu `ApplyOverrides` pentru Remote Config | ✅ (încă nelegat la serviciul Remote Config) |
-| Contur verde/gri, puls roșu la înălțime ≥ 10, crestături pe stinghie | ✅ |
-| Timpii din document (zbor 0,30 s + 0,06 s, eliminare 0,40 s, pas de lanț 0,35 s) | ✅ |
-| Ecran de final, „Erai la X puncte de record!”, „RECORD NOU!” | ✅ (IMGUI provizoriu) |
-| Evenimentele de analytics | ✅ doar în consolă (`[analytics] ...`) |
-| Reclame | 🟡 `SimulatedAdService`: un card „AD” în locul LevelPlay |
-| Modele 3D, sunet, particule adevărate, vibrații ușoare/medii, URP | ⏳ pasul 2 |
-| LevelPlay, UMP, ATT, anul nașterii | ⏳ pasul 4 |
-| Clasa de valoare, bandit-ul de interstițiale, grupul de control | ⏳ pașii 5–6 |
+- **Tabla:** 12 piscine, 3 coloane × 4 rânduri. Vecinii sunt sus, jos, stânga și dreapta.
+- **Colacii:** jos sunt 3 colaci la alegere; după ce i-ai pus pe toți 3, vin alți 3. Un colac are 2–6 înotători și 1–3 culori, afișați exact cum vor sta în stivă. Se pun doar pe piscine goale.
+- **Unirea automată**, după fiecare plasare:
+  1. Se caută două piscine vecine cu aceeași culoare în vârf.
+  2. Șirul de vârf trece de pe stiva cu șirul mai scurt pe cea cu șirul mai lung. La egalitate, trece pe piscina unde ai pus colacul.
+  3. Se repetă până nu mai există nicio pereche.
+  4. Orice stivă cu 10+ de aceeași culoare în vârf face SPLASH și înotătorii dispar.
+  5. Dacă după SPLASH apar culori noi în vârf, se reia de la 1. Asta e cascada.
+- **Pierzi** când nu mai e nicio piscină goală.
+- **Scor:** 10 puncte × înotătorii scoși × pasul cascadei (×1, ×2, ×3…).
+- **Culori:** 3 la început, 4 de la 500 de puncte, 5 de la 1.500, 6 de la 3.000.
 
-### Ce lipsește intenționat
+### Cazuri pe care regulile nu le acoperă
 
-Modul **Moarte** și cele două reguli care îl pornesc (`RewardHighValueAdHarvest`, `MultiClearBoostThenKill`) **nu** sunt implementate. Ele strică în secret grupurile chiar înainte de record, ca jucătorul să piardă și să se uite la o reclamă, și țintesc anume jucătorii care aduc cei mai mulți bani. Revive-ul rămâne: e oferit când jucătorul pierde prin propriile mutări.
+- **Ordinea perechilor.** Întâi se fac unirile *în* piscina care tocmai s-a schimbat, ca să adune tot ce e în jur. Apoi celelalte perechi care ating piscina aceea, iar la urmă restul. În fiecare grup are prioritate perechea cu cei mai mulți înotători. Exemplu: pui `22` între `22` și `222`, iar toți cei 7 ajung împreună.
+- **Egalitate fără piscina pusă** (în timpul cascadei): șirul trece pe piscina schimbată cel mai recent, altfel pe cea mai de sus/din stânga.
+- **Mai multe stive cu 10+ în același timp:** fac SPLASH toate odată, ca un singur pas de cascadă.
 
-## Interpretări ale regulilor
+## Feedback (obligatoriu chiar și pe gri)
 
-Câteva cazuri pe care documentul nu le acoperă explicit:
+- **Săritura înotătorilor:** 0,15 s fiecare, cu un mic decalaj între ei și un „tic” la fiecare săritură.
+- **SPLASH:** zguduirea ecranului (mai tare la fiecare pas de cascadă) și particule în culoarea înotătorilor.
+- **Sunet:** urcă un ton întreg la fiecare pas de cascadă (Do5, Re5, Mi5…). E generat din cod, fără fișiere audio.
+- **Scorul:** cifrele sar la fiecare SPLASH, iar „+puncte” și „CASCADĂ x2” ies din piscină.
 
-- **Rezerva goală nu termină runda.** Dacă grupul din tun nu încape, dar rezerva e goală, jucătorul îl poate parca și primește următorul grup. Runda se termină abia când nici tunul, nici rezerva ocupată nu încap.
-- **A doua schimbare e permisă doar dacă tunul nu încape nicăieri.** Altfel, după o schimbare cu un grup care nu încape, jucătorul ar rămâne fără nicio mutare legală.
-- **Revive:** la înălțimi egale, elefantul dărâmă întâi piedestalul din stânga.
-- **Nota regizorului:** punctele / 10 + 0,5 × creșterea șirului de aceeași culoare − 1 × fiecare graniță de culoare îngropată − 2 × fiecare omuleț peste înălțimea 9. Ponderile sunt în `GameConfig` și se reglează după primul test.
+## Ce nu e în test
 
-## Echilibru (simulare)
+Regizorul, reclamele, revive-ul și grafica de aquapark. Colacii vin complet aleatori.
 
-300 de runde pentru fiecare combinație, cu un bot care alege mereu cea mai bună poziție:
+## Simulare (400 de jocuri per bot)
 
-| Bot | Grupuri | Scor median | p10–p90 | Trageri |
-|---|---|---|---|---|
-| lacom | regizor (Normal) | 1.880 | 1.420–2.380 | ~100 |
-| lacom | complet aleatorii | 620 | 270–1.180 | ~54 |
-| aleatoriu | regizor | 250 | 100–510 | ~46 |
+| Bot | Scor median | p10–p90 | Colaci puși | SPLASH-uri | Cascade |
+|---|---|---|---|---|---|
+| aleatoriu | 330 | 0–800 | 23 | 1.180 | 22 |
+| lacom | 1.260 | 610–2.030 | 45 | 4.254 | 75 |
 
-La 1,5–2 s pe tragere, o rundă cu regizorul durează ~3 minute, deci în ținta de 1.500–3.000 de puncte și 3–8 minute.
+Cascadele sunt rare: sub 2% din SPLASH-uri continuă cu un al doilea pas. De urmărit la test dacă oamenii le simt ca pe o recompensă reală.
 
 ## Teste
-
-Logica (`Assets/HumanCannon/Scripts/Core`) nu depinde de Unity, deci testele rulează și fără editor:
 
 ```
 dotnet test Tools/CoreTests
@@ -72,9 +64,9 @@ dotnet test Tools/CoreTests
 ## Structură
 
 ```
-Assets/HumanCannon/Scripts/Core   logica pură (fără UnityEngine): reguli, scor, regizor, reguli ascunse, config
-Assets/HumanCannon/Scripts/Game   Unity: arena din primitive, animații, input, HUD, servicii (reclame simulate, analytics, salvare)
-Assets/HumanCannon/Editor         pregătirea automată a proiectului în editor
-Assets/HumanCannon/Tests/Editor   teste NUnit (EditMode)
-Tools/CoreTests                   proiect dotnet care rulează testele în afara Unity
+Assets/SplashSort/Scripts/Core   logica pură (fără UnityEngine): tabla, colacii, unirea, SPLASH, cascada, scorul
+Assets/SplashSort/Scripts/Game   Unity: grila din primitive, drag & drop, animații, sunet, zguduire, particule, HUD
+Assets/SplashSort/Editor         pregătirea automată a proiectului în editor
+Assets/SplashSort/Tests/Editor   teste NUnit (EditMode)
+Tools/CoreTests                  proiect dotnet care rulează testele în afara Unity
 ```

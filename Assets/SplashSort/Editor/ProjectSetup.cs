@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
-namespace HumanCannon.EditorTools
+namespace SplashSort.EditorTools
 {
     /// <summary>
     /// Prepares a freshly downloaded copy of the project so it can be played without manual setup:
@@ -15,10 +15,10 @@ namespace HumanCannon.EditorTools
     [InitializeOnLoad]
     static class ProjectSetup
     {
-        const string ProductName = "Human Cannon";
+        const string ProductName = "Splash Sort";
         const string MainScene = "Assets/Scenes/Main.unity";
-        const string OpenedKey = "HumanCannon.MainSceneOpened";
-        const string AskedRestartKey = "HumanCannon.AskedRestart";
+        const string OpenedKey = "SplashSort.MainSceneOpened";
+        const string AskedRestartKey = "SplashSort.AskedRestart";
 
         static ProjectSetup()
         {
@@ -70,7 +70,7 @@ namespace HumanCannon.EditorTools
             PlayerSettings.SetGraphicsAPIs(BuildTarget.StandaloneWindows64, new[] { GraphicsDeviceType.Direct3D11 });
 
             AssetDatabase.SaveAssets();
-            Debug.Log("[Human Cannon] Player Settings pregătite: portret, fereastră 540×1170 pe Windows, Direct3D 11.");
+            Debug.Log("[Splash Sort] Player Settings pregătite: portret, fereastră 540×1170 pe Windows, Direct3D 11.");
         }
     }
 }

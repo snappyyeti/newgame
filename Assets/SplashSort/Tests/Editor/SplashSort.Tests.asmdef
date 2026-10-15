@@ -1,8 +1,8 @@
 {
-    "name": "HumanCannon.Tests",
-    "rootNamespace": "HumanCannon.Tests",
+    "name": "SplashSort.Tests",
+    "rootNamespace": "SplashSort.Tests",
     "references": [
-        "HumanCannon.Core",
+        "SplashSort.Core",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

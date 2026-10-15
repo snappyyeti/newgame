@@ -1,8 +1,8 @@
 {
-    "name": "HumanCannon.Game",
-    "rootNamespace": "HumanCannon.Game",
+    "name": "SplashSort.Game",
+    "rootNamespace": "SplashSort.Game",
     "references": [
-        "HumanCannon.Core",
+        "SplashSort.Core",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],
@@ -16,7 +16,7 @@
         {
             "name": "com.unity.inputsystem",
             "expression": "1.0.0",
-            "define": "HC_INPUT_SYSTEM"
+            "define": "SPLASH_INPUT_SYSTEM"
         }
     ],
     "noEngineReferences": false
