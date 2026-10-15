@@ -89,7 +89,7 @@ namespace Titan.Core.Ads
         /// <summary>Holdout: buckets 10-14 never see "+1 Loc".</summary>
         public bool ExtraSlotHoldout => IsExtraSlotHoldout(Config, State.Bucket);
 
-        public static bool IsInterHoldout(AdConfig c, int bucket) => bucket >= 0 && bucket <= c.holdout_inter_max_bucket;
+        public static bool IsInterHoldout(AdConfig c, int bucket) => bucket >= 0 && bucket <= c.HoldoutInterMaxBucket;
         public static bool IsExtraSlotHoldout(AdConfig c, int bucket) => bucket >= c.holdout_extra_slot_min_bucket && bucket <= c.holdout_extra_slot_max_bucket;
 
         /// <summary>The experiments string on every ad event: the interstitial preset, the revive push-back, remote tags.</summary>
@@ -204,7 +204,7 @@ namespace Titan.Core.Ads
 
         /// <summary>The FTUE gate of every ad: ≥ 3 lifetime runs and ≥ 600 s of lifetime play.</summary>
         public bool PassesGlobalGate(int lifetimeRuns, float lifetimePlaySec) =>
-            lifetimeRuns >= Config.min_lifetime_runs_any_ad && lifetimePlaySec >= Config.min_lifetime_play_s_any_ad;
+            lifetimeRuns >= Config.MinLifetimeRunsAnyAd && lifetimePlaySec >= Config.MinLifetimePlaySecondsAnyAd;
 
         /// <summary>May this rewarded offer be made now? Pure (no logging, no state change).</summary>
         public bool CanOffer(Placement p, OfferContext ctx, out string reason)
@@ -392,7 +392,7 @@ namespace Titan.Core.Ads
             if (!Config.inter_enabled || InterHoldout) skipReason = SkipReason.Disabled;
             else if (State.SessionCount < 2) skipReason = SkipReason.FirstSession;
             else if (ctx.lifetimeRuns < Config.GraceRuns) skipReason = SkipReason.GraceRuns;
-            else if (ctx.lifetimePlaySec < Math.Max(Config.inter_min_lifetime_play_s, Config.min_lifetime_play_s_any_ad)) skipReason = SkipReason.MinLifetimePlay;
+            else if (ctx.lifetimePlaySec < Math.Max(Config.inter_min_lifetime_play_s, Config.MinLifetimePlaySecondsAnyAd)) skipReason = SkipReason.MinLifetimePlay;
             else if (AdBreakActive) skipReason = SkipReason.AdBreakActive;
             else if (now - State.LastInterUtc < Config.CooldownSeconds) skipReason = SkipReason.Cooldown;
             else if (State.PlaySinceInter < Config.MinPlaySeconds) skipReason = SkipReason.MinPlay;

@@ -266,6 +266,35 @@ namespace Titan.Tests
             c2.lifetimeRuns = 20;
             c2.lifetimePlaySec = 599f;
             Assert.IsFalse(lax.ShouldShowInterstitial(c2, out _));
+
+            // Remote/Resources JSON that tries to switch the gate and the holdout off changes nothing.
+            var open = new AdConfig();
+            var ignored = new List<string>();
+            Assert.IsTrue(open.ApplyJson("{\"min_lifetime_runs_any_ad\":0,\"min_lifetime_play_s_any_ad\":0,\"holdout_inter_max_bucket\":-1,"
+                + "\"inter_grace_runs\":1,\"inter_min_lifetime_play_s\":0}", ignored));
+            CollectionAssert.IsEmpty(ignored, "the keys exist; only their effect is clamped");
+            var opened = AdKit.ReadyForInter(new FakeClock(), open);
+            foreach (var (runs, play) in new[] { (0, 0f), (2, 5000f), (20, 599f) })
+            {
+                foreach (Placement p in Enum.GetValues(typeof(Placement)))
+                {
+                    var ctx = AdKit.PassingOffer();
+                    ctx.lifetimeRuns = runs;
+                    ctx.lifetimePlaySec = play;
+                    Assert.IsFalse(opened.CanOffer(p, ctx, out string r), "JSON-lowered gate: " + p + " at " + runs + " runs / " + play + " s (" + r + ")");
+                }
+                var ictx = AdKit.PassingInter();
+                ictx.lifetimeRuns = runs;
+                ictx.lifetimePlaySec = play;
+                Assert.IsFalse(opened.ShouldShowInterstitial(ictx, out _), "JSON-lowered gate: inter at " + runs + " runs / " + play + " s");
+            }
+            for (int bucket = 0; bucket <= 9; bucket++)
+            {
+                Assert.IsTrue(AdGovernor.IsInterHoldout(open, bucket), "bucket " + bucket + " stays in the holdout");
+                Assert.IsFalse(AdKit.ReadyForInter(new FakeClock(), open, bucket).ShouldShowInterstitial(AdKit.PassingInter(), out _));
+            }
+            Assert.IsFalse(AdGovernor.IsInterHoldout(open, 50));
+            Assert.IsTrue(AdKit.ReadyForInter(new FakeClock(), open, 50).ShouldShowInterstitial(AdKit.PassingInter(), out string why), "control: an eligible player still can (" + why + ")");
         }
 
         [Test]
@@ -280,6 +309,28 @@ namespace Titan.Tests
             Assert.AreEqual(90f, AdConfig.FloorMinPlaySeconds);
             Assert.AreEqual(3.5f, AdConfig.CeilingPer10Min);
             Assert.IsTrue(typeof(AdConfig).GetField(nameof(AdConfig.FloorCooldownSeconds)).IsLiteral, "a const, not a field JSON can reach");
+
+            // FTUE gate and interstitial holdout: JSON can make them stricter, never looser.
+            var lax = new AdConfig();
+            lax.ApplyJson("{\"min_lifetime_runs_any_ad\":0,\"min_lifetime_play_s_any_ad\":-5,\"holdout_inter_max_bucket\":-1}");
+            Assert.AreEqual(3, lax.MinLifetimeRunsAnyAd);
+            Assert.AreEqual(600f, lax.MinLifetimePlaySecondsAnyAd);
+            Assert.AreEqual(9, lax.HoldoutInterMaxBucket);
+            var strict = new AdConfig();
+            strict.ApplyJson("{\"min_lifetime_runs_any_ad\":5,\"min_lifetime_play_s_any_ad\":900,\"holdout_inter_max_bucket\":19}");
+            Assert.AreEqual(5, strict.MinLifetimeRunsAnyAd);
+            Assert.AreEqual(900f, strict.MinLifetimePlaySecondsAnyAd);
+            Assert.AreEqual(19, strict.HoldoutInterMaxBucket);
+            Assert.AreEqual(3, AdConfig.FloorLifetimeRunsAnyAd);
+            Assert.AreEqual(600f, AdConfig.FloorLifetimePlaySecondsAnyAd);
+            Assert.AreEqual(9, AdConfig.FloorHoldoutInterMaxBucket);
+            foreach (var name in new[] { nameof(AdConfig.FloorLifetimeRunsAnyAd), nameof(AdConfig.FloorLifetimePlaySecondsAnyAd), nameof(AdConfig.FloorHoldoutInterMaxBucket) })
+                Assert.IsTrue(typeof(AdConfig).GetField(name).IsLiteral, name + " is a const");
+
+            // Rules read the effective (clamped) values, never the raw JSON fields.
+            string gov = Code(Path.Combine("Assets", "Titan", "Scripts", "Core", "Ads", "AdGovernor.cs"));
+            foreach (var raw in new[] { "min_lifetime_runs_any_ad", "min_lifetime_play_s_any_ad", "holdout_inter_max_bucket" })
+                StringAssert.DoesNotContain(raw, gov, "AdGovernor reads the raw field " + raw);
         }
 
         [Test]

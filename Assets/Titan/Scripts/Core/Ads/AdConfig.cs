@@ -19,6 +19,11 @@ namespace Titan.Core.Ads
         public const float FloorCooldownSeconds = 120f;
         public const float FloorMinPlaySeconds = 90f;
         public const float CeilingPer10Min = 3.5f;
+        /// <summary>The FTUE gate of every ad (DESIGN 12.1): config may raise it, never lower it.</summary>
+        public const int FloorLifetimeRunsAnyAd = 3;
+        public const float FloorLifetimePlaySecondsAnyAd = 600f;
+        /// <summary>Buckets 0..9 are the interstitial control group forever: config may widen it, never shrink it.</summary>
+        public const int FloorHoldoutInterMaxBucket = 9;
 
         // ------------------------------------------------------------ interstitial (10.2 C)
         public bool inter_enabled = true;
@@ -140,9 +145,19 @@ namespace Titan.Core.Ads
             get
             {
                 Preset(out _, out _, out int g);
-                return Math.Max(min_lifetime_runs_any_ad, inter_grace_runs > 0 ? inter_grace_runs : g);
+                return Math.Max(MinLifetimeRunsAnyAd, inter_grace_runs > 0 ? inter_grace_runs : g);
             }
         }
+
+        /// <summary>Lifetime runs before any ad (FTUE gate), never under 3.</summary>
+        public int MinLifetimeRunsAnyAd => Math.Max(FloorLifetimeRunsAnyAd, min_lifetime_runs_any_ad);
+
+        /// <summary>Lifetime play seconds before any ad (FTUE gate), never under 600 (NaN counts as the floor).</summary>
+        public float MinLifetimePlaySecondsAnyAd =>
+            float.IsNaN(min_lifetime_play_s_any_ad) ? FloorLifetimePlaySecondsAnyAd : Math.Max(FloorLifetimePlaySecondsAnyAd, min_lifetime_play_s_any_ad);
+
+        /// <summary>Last bucket of the interstitial holdout (0..this see no interstitial), never under 9.</summary>
+        public int HoldoutInterMaxBucket => Math.Max(FloorHoldoutInterMaxBucket, holdout_inter_max_bucket);
 
         /// <summary>At most 3.5 interstitials per 10 minutes of play (never more, whatever the config).</summary>
         public float MaxPer10Min => Math.Max(0f, Math.Min(CeilingPer10Min, inter_max_per_10min));
