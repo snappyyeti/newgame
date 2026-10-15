@@ -3,6 +3,7 @@
   <!--
     Tests for the pure game logic, run outside Unity:
       dotnet test Tools/CoreTests
+    The balance guard (BalanceTests, category Balance) runs by default; SKIP_BALANCE=1 skips it.
     The tests live here, outside Assets, so Unity never compiles them (it would need the Test Framework package).
   -->
   <PropertyGroup>
@@ -16,6 +17,8 @@
   <ItemGroup>
     <Compile Include="../../Assets/Titan/Scripts/Core/**/*.cs" />
     <Compile Include="*.cs" />
+    <!-- The simulator bots and runner, shared with Tools/Sim for BalanceTests (Program.cs stays out). -->
+    <Compile Include="../Sim/Bots.cs;../Sim/SimRunner.cs;../Sim/SimReport.cs;../Sim/Presets.cs" />
   </ItemGroup>
 
   <ItemGroup>

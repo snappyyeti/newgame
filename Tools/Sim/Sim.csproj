@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Balance simulator: the real game core played by bots, outside Unity.
+      Usage: see the README (section Simulare) or Tools/Sim/Program.cs.
+    It compiles Assets/Titan/Scripts/Core directly (no copies), so any change to TitanConfig or the rules
+    shows up here with no other edit. Bots.cs, SimRunner.cs, SimReport.cs and Presets.cs are also compiled
+    into Tools/CoreTests (BalanceTests), so keep them C# 9.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <RootNamespace>Titan.Sim</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Assets/Titan/Scripts/Core/**/*.cs" />
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
+</Project>

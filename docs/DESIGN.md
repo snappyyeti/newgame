@@ -360,6 +360,14 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 | Interstițiale | 20 de runde de 40 s la rând → 0; ≤ 3,5 la 10 min | test |
 | Titanul Zilei | fiecare zi 0–730: Greedy trece ≥ 35%, primul titan ≥ 90% | test |
 
+**Testul de echilibru din CI** (`Tools/CoreTests/BalanceTests.cs`, categoria `Balance`, 50 de jocuri/robot, sămânța 20261015, ajutoare oprite) verifică azi doar praguri grosiere pentru bucla actuală; itemul 4 (bucla v2) le strânge la țintele de mai sus:
+- nicio rundă nu atinge limita de 30 min (≤ 2%);
+- media titanilor doborâți: Random ≥ 1,4, Smart ≥ 1,8; Smart ≥ Random;
+- pierdere la titanul 1: Random ≤ 30%, Smart ≤ 25%;
+- bucăți per titan între 1 și 8, iar loviturile pe încheietură taie bucăți;
+- simularea e deterministă (aceeași sămânță → același rezultat).
+Separat, mereu (și cu `SKIP_BALANCE=1`): codul roboților nu atinge ajutoare sau reclame, `BotView` expune doar numere, `VisibleColorBias` = 0,65 în cod și în toate preseturile.
+
 ### 12.2 KPI pentru primul soft launch
 
 | KPI | Țintă | Prag sub care reparăm bucla înainte de orice altceva |
@@ -503,4 +511,14 @@ Specificațiile tehnice complete și criteriile de acceptare sunt în backlog-ul
 
 ### 16.4 Simulatorul nostru
 
-Rezultatele brute și codul sunt în `docs/research/harness/` (vezi README-ul de acolo). Itemul 1 din backlog le mută, curat, în `Tools/Sim`.
+Simulatorul e în `Tools/Sim` (itemul 1, făcut): o consolă dotnet care compilează direct `Assets/Titan/Scripts/Core`, deci orice schimbare din `TitanConfig` sau din reguli se vede fără altă editare. Roboții (`Tools/Sim/Bots.cs`) văd doar numere printr-un `BotView` și răspund cu indexul tunului de atins; nu pot ajunge la joc, la ajutoare sau la reclame (test automat). Fiecare joc i are sămânța `SeededRandom.Derive(sămânțaMaster, i)`, aceeași pentru toți roboții, deci rezultatele sunt reproductibile pe orice mașină.
+
+Comanda: `dotnet run -c Release --project Tools/Sim -- --games 300 --preset current|v2 [--set Cheie=Valoare ...] [--seed S] [--static]`.
+
+Rezultatele brute ale cercetării inițiale (harness-ul vechi, cu steaguri prin variabile de mediu) rămân în `docs/research/harness/` (`out_*.txt`, `core_experiments.diff`); codul vechi e în istoricul git. Verificare: `Tools/Sim` cu presetul `current` (200 de jocuri, sămânța 1) dă Random 1,99 / Smart 2,44 titani, 100% pierderi „locuri pline”, față de 1,98 / 2,34 în harness-ul vechi (diferența vine doar din alt generator de numere aleatoare).
+
+Decizii luate la mutare:
+- Robotul **Expert** (rollout-uri de 12 s) nu a fost mutat: nu e cerut în ținte și avea nevoie de clonarea prin reflecție a jocului.
+- **Smart** „nu umple ultimul loc”: un tun fără țintă e trimis doar dacă nimic nu trage sau dacă mai sunt ≥ 3 locuri libere (≥ 2 când toată tava e moartă). Când nimic nu trage, a aștepta nu ajută, așa că trimite oricum (exact ca harness-ul măsurat).
+- „Timp blocat” = nimic nu trage și nu ai nicio atingere utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu culoare vizibilă) — aceeași definiție ca regula 4.2.9.
+- Tăieturile curate și stelele apar în raport abia cu itemul 7 (scorul).

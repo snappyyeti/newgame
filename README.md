@@ -39,22 +39,28 @@ Control: atingi / dai click pe un tun de jos.
 | 4 | 477 | 4 | 124 s |
 | 7 | 996 | 6 | 201 s |
 
-## Simulare (300 de jocuri, un „om” care atinge un tun la fiecare 0,8–1,6 s)
+## Simulare (echilibrul jocului)
 
-| Jucător | Titani doborâți (median) | Durata rundei | Pierde la |
-|---|---|---|---|
-| alege tunuri la întâmplare | 2 | ~40 s | locuri pline (aproape mereu) |
-| alege tunuri cu culori vizibile | 2 | ~75 s | zid (2/3), locuri pline (1/3) |
+Simulatorul e în `Tools/Sim`: joacă nucleul real al jocului (`Assets/Titan/Scripts/Core`, compilat direct, fără copii) cu trei roboți — **Random** (atinge orice tun), **Greedy** (alege culori vizibile), **Smart** (urmărește încheieturile, nu umple zidul cu tunuri care așteaptă). Roboții ating un tun la 0,6–1,6 s și **nu folosesc niciodată ajutoarele din reclame**.
 
-Primii 1–2 titani se pot doborî, iar al 3-lea (4 culori, mai adânc) e primul zid real. Numerele sunt în `TitanConfig` și se reglează după test.
+```
+dotnet run -c Release --project Tools/Sim -- --games 300 --preset current
+dotnet run -c Release --project Tools/Sim -- --games 300 --preset v2 --set ApproachSecondsPerCube=0.08
+```
+
+Presetul `current` e `TitanConfig` așa cum e acum; `v2` e tabelul din `docs/DESIGN.md` 4.3 și se completează singur pe măsură ce regulile noi intră în cod (până atunci simulatorul scrie ce lipsește). `--set Cheie=Valoare` schimbă orice câmp din `TitanConfig`.
+
+Raportul are metricile din `docs/DESIGN.md`, secțiunea 12.1 (titani doborâți, durata rundei, de ce se pierde, timpi per titan, decizii, bucăți, tunuri moarte) și raportul Smart : Random. Țintele și cifrele de azi sunt în `docs/DESIGN.md` (secțiunile 3 și 12.1), nu aici, ca să nu rămână vechi.
 
 ## Teste
 
 ```
-dotnet test Tools/CoreTests
+dotnet test Tools/CoreTests          # logica + testul de echilibru (50 de jocuri/robot, câteva secunde)
+dotnet build Tools/UnityCheck        # verifică că scripturile de joc compilează cu Unity
+dotnet build Tools/EditorCheck       # verifică scripturile de editor
 ```
 
-Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze.
+Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tools/CoreTests`, în afara folderului `Assets`, ca Unity să nu le compileze. Testul de echilibru (`BalanceTests`) rulează mereu; cu `SKIP_BALANCE=1` e sărit.
 
 ## Structură
 
@@ -62,5 +68,8 @@ Logica (`Assets/Titan/Scripts/Core`) nu depinde de Unity. Testele stau în `Tool
 Assets/Titan/Scripts/Core   logica pură: titanul din voxeli, rupturile, tunurile, linia de tragere, simularea
 Assets/Titan/Scripts/Game   Unity: arena, titanul, tunurile, proiectilele, bucățile cu fizică, sunete, HUD
 Assets/Titan/Editor         pregătirea automată a proiectului în editor
-Tools/CoreTests             testele NUnit ale logicii, rulate cu dotnet
+Tools/CoreTests             testele NUnit ale logicii și testul de echilibru, rulate cu dotnet
+Tools/Sim                   simulatorul de echilibru (roboți care joacă nucleul real)
+Tools/UnityCheck            verificare de compilare a scripturilor de joc, fără Unity
+Tools/EditorCheck           verificare de compilare a scripturilor de editor, fără Unity
 ```

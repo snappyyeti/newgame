@@ -1,21 +1,18 @@
 # Harness de simulare (arhivă de cercetare)
 
-Copie a harness-ului folosit de echipa de analiză pe 15.10.2026, ca să nu se piardă din directorul temporar.
-Nu se compilează direct din acest folder: `Sim.csproj` include `Core/*.cs`, adică o copie a
-`Assets/Titan/Scripts/Core` cu patch-ul `core_experiments.diff` aplicat (steagurile din `README_EXP.txt`).
+Rezultatele echipei de analiză din 15.10.2026, păstrate pentru istoric. Ele sunt citate în `docs/DESIGN.md` (secțiunile 3 și 12.1).
 
-Pentru a reproduce:
+**Codul s-a mutat în `Tools/Sim`** (itemul FND-1): simulatorul compilează acum direct `Assets/Titan/Scripts/Core`,
+fără copie și fără patch, iar steagurile experimentale devin câmpuri reale din `TitanConfig` pe măsură ce
+intră regulile (CORE-1..CORE-4). Vezi `README.md` (secțiunea Simulare) și `docs/DESIGN.md` 16.4.
+Harness-ul vechi (`Program.cs`, `r2.sh`) e în istoricul git, înainte de commit-ul care l-a mutat.
 
-```
-mkdir /tmp/sim && cp -r docs/research/harness/* /tmp/sim/ && mkdir /tmp/sim/Core
-cp Assets/Titan/Scripts/Core/*.cs /tmp/sim/Core/ && (cd /tmp/sim && patch -p0 < core_experiments.diff)
-cd /tmp/sim && dotnet build -c Release && N=200 ./r2.sh NUME SALVAGE=1 FAR=1 ...
-```
+Ce rămâne aici:
 
-Rezultatele `out_*.txt` sunt cele citate în `docs/DESIGN.md`:
-
-| Fișier | Configurație |
+| Fișier | Ce este |
 |---|---|
+| core_experiments.diff | patch-ul experimental aplicat atunci pe o copie a Core (steaguri prin variabile de mediu) |
+| README_EXP.txt | lista steagurilor și combinația recomandată |
 | out_base.txt | jocul actual (fără reparații) |
 | out_salv.txt | + muniția pleacă odată cu bucata (C1) |
 | out_hand.txt | + țintire de la vârf spre încheietură, mâna = culoarea brațului (C2) |
@@ -23,4 +20,7 @@ Rezultatele `out_*.txt` sunt cele citate în `docs/DESIGN.md`:
 | out_G1.txt | + ceasul titanului (apropiere rapidă, recul la tăiere) |
 | out_C1.txt | + ciclurile de 5 titani (SPRINT / BOSS) |
 
-Itemul 1 din backlog (docs/DESIGN.md, secțiunea 13) mută acest harness, curat, în `Tools/Sim`.
+Corespondența steag vechi → câmp `TitanConfig` (presetul `v2` din `Tools/Sim/Presets.cs`):
+SALVAGE → SalvageEnabled, FAR → TargetOrder=FarthestFirst, HANDARM → regula din builder (CORE-2),
+SLOTREFILL → TrayRefill=PerSlot, NOTRIPLE → NoTripleColor, KNOCK/KBPC/KBMAX/STUNB/STUNMAX → Knockback*/Stun*,
+ABASE/APC/ASPD/AMIN → Approach*/MinApproachSeconds, CYCLE → UseCycles, BIAS → VisibleColorBias (blocat la 0,65).
