@@ -112,6 +112,8 @@ Din itemul 4, coloana v2 e valoarea implicită din `TitanConfig` (presetul `v2` 
 | NearMissFraction / NearMissBonusMult | — | 0,15 / 1,5 |
 | DeadlockSeconds | — | 1,5 |
 | UseCycles / BossBonusMult / BossExtraColor | — | true / 2 / false |
+| CleanCutThreshold / CleanCutMult / ChainWindowSeconds / ChainMaxMult | — | 0,8 / 2 / 4 s / 5 |
+| CleanLineMax (steaua „Linie curată”) | — | **4** (reglat în simulator, vezi 6.4) |
 
 ### 4.3.1 Decizii luate la implementare (itemii 2 și 3: Recuperare, Tăieturi câștigate)
 
@@ -238,6 +240,29 @@ La doborâre, trei realizări cu motiv scris pentru cele ratate: **Doborât**; *
 
 Cheia recordului devine `titan_best_v2` (scorurile vechi nu se mai compară).
 
+### 6.4 Decizii luate la implementare (itemul 7: scorul tăieturilor și nota)
+
+- **Un singur loc pentru multiplicatori:** `TitanGame.ScorePiece`, apelat pentru fiecare bucată din `Shoot`. Puncte = cuburi × 25 × (curată ? 2 : 1) × min(lanț, 5). Doborârea (boss ×2, „la mustață” ×1,5) rămâne separată și neschimbată; stelele nu adaugă nimic.
+- **Curată** = bucata are ≥ 80% din cuburile inițiale ale părții ei (`FallenPiece.Part`, capul câștigă la egalitate), cu o toleranță de 0,001 cuburi ca 0,8f × 10 să numere 8 cuburi drept curat. O bucată a corpului (de exemplu un ciot de umăr) nu e niciodată curată. Când trunchiul de sub gât e mâncat și cad gâtul și capul împreună, bucata are majoritate „cap” și e curată: e tot o decapitare.
+- **Lanțul** folosește timpul simulat (`GameTime`, suma `dt`); fereastra e ≤ 4 s inclusiv. Bucățile căzute din aceeași lovitură cresc lanțul una după alta (a doua din aceeași lovitură are deja ×2). Lanțul și fereastra se resetează la fiecare titan nou.
+- **`IsCleanEligible(part)`** = partea are ≥ 80% din cuburi și cel puțin un cub (deci e încă prinsă: cuburile libere cad imediat). Pentru corp e mereu fals. Vizual: cusătura încheieturii devine aurie; încheietura își află membrul după primul vecin care nu e corp.
+- **Statistici de rundă:** `MaxPiecePoints`, `MaxChain`, `PiecesCut`, `CleanCuts`, `HeadsCut` (= decapitări, adică bucăți de cap **curate**), `TitansDefeated`, `StarsEarned`.
+- **Stele:** `GameEvent.Stars` e o mască de biți (1 doborât, 2 decapitare, 4 linie curată), plus `GameEvent.MaxLine` pentru motivul scris. „Cel mai plin zid” se măsoară la fiecare `Deploy` și la începutul fiecărui `Tick`, și pornește de la 0 la fiecare titan.
+- **Popup-ul mare:** unul singur pe ecran, 1,1 s. Unul nou așteaptă doar dacă celui de pe ecran îi mai rămân ≤ 0,3 s; altfel se contopește cu el (eticheta cea mai bună, lanțul cel mai mare, punctele adunate). „RECUPERAT +N” rămâne un popup mic.
+- **CleanLineMax = 4, nu 3.** Ținta „Smart ia steaua la 25–40% din titani” **nu se atinge** fără să strice ținta itemului 4 (Smart : Random 1,7–2,3×). Măsurat cu 300 de jocuri/robot, sămânța 1 (R / G / S):
+
+| Variantă | Steaua 3 (Smart) | Smart : Random titani | Steaua 3 (Random / Greedy) |
+|---|---|---|---|
+| K = 3, Smart neschimbat | 0% | 1,77× | 1% / 0% |
+| **K = 4, Smart neschimbat (în cod)** | **9%** | **1,77×** | 13% / 3% |
+| K = 4, Smart ține al 5-lea tun cât pericolul < 15% | 18% | 1,74× | — |
+| K = 4, … pericol < 20% | 26% | 1,69× | — |
+| K = 4, … pericol < 25% | 34% | 1,63–1,70× (semințele 1–3) | — |
+| K = 3, … pericol < 40% | 40% | 1,17× | — |
+
+  Concluzie: steaua costă titani, pentru că a ține tunuri în tavă scade puterea de foc. Cu K = 3 steaua e practic imposibilă în joc normal (al treilea punct s-ar face gri aproape la fiecare titan), deci am ales K = 4 și am lăsat Smart neschimbat, ca țintele itemului 4 să rămână valabile. Cota zidului din pierderi nu se schimbă (stelele nu schimbă jocul): 96% / 86% / 99%. **De decis de proprietar:** fie ținta devine „steaua 3 e posibilă (≥ 5% pentru Smart), iar un jucător care o urmărește plătește cu ~0,7 titani pe rundă”, fie steaua se redefinește (de exemplu „niciodată 5 tunuri pe zid”).
+- Tăieturi curate per titan: Smart 2,02, Random 1,26 → **1,60×** (ținta ≥ 1,5× ✔); Greedy 1,15. Decapitări: Smart 65%, Random 50%, Greedy 45% din titanii doborâți.
+
 ## 7. Lizibilitate, accesibilitate, senzație
 
 - **Daltonism (obligatoriu pentru topuri).** Fiecare culoare are un model și un simbol propriu: 0 roșu = plin/cerc, 1 albastru = dungi orizontale/pătrat, 2 galben = puncte/triunghi, 3 verde = diagonale/romb, 4 violet = tablă de șah/cruce, 5 portocaliu = grilă/stea. Modelele apar discret pe cuburi (texturi procedurale de 32×32, contrast ±15%), simbolurile apar pe tunuri, pe indicatoarele de locuri și în cartea culorilor. Setarea „Simboluri culori” (implicit pornită) mărește contrastul. Culoarea cuburilor titanului nu e schimbată niciodată de cosmetice sau efecte.
@@ -311,6 +336,19 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 - **Scuturi**: primul Titan al Zilei terminat îți dă 1; fiecare 7 zile de serie încă 1; maximum 2. Se folosesc automat pentru zilele ratate: **„Un scut ți-a păstrat seria.”**
 - Dacă seria se rupe: **„Bine ai revenit! Începe o serie nouă azi.”** Numărul vechi nu se arată; „Cea mai lungă serie: N” rămâne.
 - Fără texte de tip „vei pierde”, fără oferte de răscumpărare a seriei după ce ai ratat o zi, fără notificări în v1.
+
+### 9.6 Decizii luate la implementare (itemii 10 și 11: profil, puncte de salvare, record, restart)
+
+- **Unde stă logica:** totul e în Core și testat: `Profile` (date simple, câmpuri publice, cheile JSON = numele câmpurilor), `DayClock`, `Telemetry` + `IAnalyticsSink`, `ProfileStore` (ordinea de încărcare și salvarea sigură, cu System.IO), `RunSession` (o rundă: jurnal, record, cel mai departe titan, puncte de salvare) și `HudText` (textele adevărate ale recordului, ca funcții pure). În Unity rămân doar `JsonUtility`, `PlayerPrefs` și `Application.persistentDataPath` (`Game/ProfileStore.cs`), plus HUD-ul.
+- **Profilul** are în plus `legacyBest`: recordul vechi (`titan_best`), arătat o singură dată ca „Record vechi (alt punctaj)” până faci un scor nou, niciodată comparat. Un profil nou preia și „Efecte reduse” din vechea cheie `set_reducedFx`. Setările stau de acum în profil (`Settings.Bind`); orice schimbare salvează profilul. Recordul se scrie și ca număr în `titan_best_v2`.
+- **Salvarea:** `titan_profile.json.tmp` → `File.Copy` peste `titan_profile.json` → ștergere `.tmp` → aceeași copie în PlayerPrefs (`titan_profile_v1`) → `PlayerPrefs.Save()`. Încărcarea: fișierul, apoi PlayerPrefs, apoi un profil nou; o sursă care nu se citește se sare și se notează `save_corrupt(0 fișier / 1 PlayerPrefs)`. Testul simulează oprirea în timpul scrierii `.tmp` (fișierul rămâne cel vechi) și în timpul copierii (fișier rupt → se încarcă oglinda din PlayerPrefs). Se salvează la titan doborât, la final de rundă, la punctul de salvare, la schimbarea setărilor, la `OnApplicationPause(true)` și la `OnApplicationQuit`; niciodată pe cadru.
+- **Ziua** = zile de la 2026-01-01 în ora **locală**. Protecția la ceas: azi = max(ziua ceasului, maxSeenDay − 1). O zi e „nouă” doar dacă e după `lastPlayDay`.
+- **Jurnalul:** inel de 300 de intrări `{t, e, a, b}`, `t` = secunde Unix. Evenimente: `session_start(zi, zile de la ultima; −1 prima dată)`, `run_start(titan de start, mod: 0 normal, 3 punct de salvare)`, `titan_spawn(n, rol)`, `titan_defeat(n, secunde de joc)`, `run_end(n, motiv)`, `perf(p95 ms al cadrelor din toată runda, n)` la final de rundă, `restart_ms(ms)` doar pentru butoanele de la final, măsurat până la primul cadru desenat al rundei noi. `ftue(pas)` există ca nume, dar îl trimite itemul 6 (FTUE), care nu e încă făcut. Exportul de depanare (F9 în editor sau atingere cu 3 degete pe scor) copiază jurnalul JSON și arată „Jurnal copiat”.
+- **Rundele cu sămânță:** `new TitanGame(cfg, runSeed, startTitan, startScore)`; titanul n își ia generatorul din `Derive(runSeed, n)` pentru formă, pachet și toate tragerile din timpul lui. Constructorul vechi cu `IRandom` rămâne pentru teste și simulator.
+- **Punctele de salvare** se salvează la `TitanSpawned` cu n = 6, 11, 16, … (scorul din acel moment vine în eveniment, `GameEvent.Score`). O rundă care **pornește** dintr-un punct de salvare nu îl salvează din nou. `totalRuns` crește la finalul rundei. „Joacă din nou” după o rundă pornită de la titanul 1 = sămânță nouă; după o rundă pornită dintr-un punct de salvare = același punct (aceeași sămânță, același scor). „Joc nou” șterge punctul de salvare. La pornire, ecranul „Continuă (titanul #n)” apare doar cu ≥ 3 runde terminate și un punct de salvare; Enter/Space = Continuă.
+- **Recordul în rundă** se compară cu recordul de la începutul rundei. Bannerul „RECORD NOU!” și marcajul „Record în N” apar doar dacă exista un record (> 0): la prima rundă din viață nu are sens. La final, „RECORD NOU!” apare însă și la prima rundă (e adevărat). „TITAN NOU: #n” apare o singură dată pe rundă, la primul titan peste vechiul maxim, și doar dacă exista un maxim. Textul de la final folosește `floor(100 × scor / record)` și apare doar între 85% și 100% (la egalitate: 100%).
+- **Restartul rapid:** arena (cameră, zid, plăci, materiale) se construiește o dată; `ArenaView.Reset(joc)` oprește toate corutinele vederii (și pe cele din `Fx`: bătăile inimii), întoarce proiectilele în zbor în pool și distruge dintr-o dată rădăcina rundei („Run”: titani, tunuri, bucăți care cad). Proiectilele sunt acum refolosite (pool), nu create și distruse la fiecare lovitură.
+- **Neverificat în editor** (nu avem Unity aici): ținta < 300 ms, numărul de obiecte după 10 restarturi (±5) și „nicio corutină veche după Reset” se verifică manual: joacă până la un boss L8, apasă „Joacă din nou” de 10 ori, uită-te la `restart_ms` în jurnal (F9) și la numărul de obiecte din ierarhie.
 
 ## 10. Reclamele
 
@@ -426,8 +464,8 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 | Timp blocat continuu maxim | ≤ 1,55 s | 1,60 s | 0,00 s ✔ |
 | Bucăți din lovituri pe încheietură | ≥ 65% | 76–82% | 75% / 63% / 81% (Greedy sub țintă, itemul 3) |
 | Bucăți per titan | 2,5–3,5 | ~3 | 3,06 / 3,20 / 3,12 ✔ |
-| Tăieturi curate per titan, Smart vs Random | ≥ 1,5× | de măsurat |
-| Steaua „Linie curată” pentru Smart | 25–40% din titani | de măsurat |
+| Tăieturi curate per titan, Smart vs Random | ≥ 1,5× | de măsurat | 1,26 / 1,15 / 2,02 → 1,60× ✔ |
+| Steaua „Linie curată” pentru Smart | 25–40% din titani | de măsurat | 9% (K = 4) ✘ (vezi 6.4) |
 | Titanul 1 scenarizat | ≥ 3 bucăți în 4 s după prima atingere | test |
 | Revenire | Smart câștigă ≥ 1 titan în ≥ 50% din reveniri | de măsurat |
 | Interstițiale | 20 de runde de 40 s la rând → 0; ≤ 3,5 la 10 min | test |
@@ -447,6 +485,7 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 - bucăți per titan între 1 și 8, iar loviturile pe încheietură taie bucăți;
 - Recuperare (itemul 2): 0 tunuri moarte pe zid, 0% timp cu un tun mort pe zid, 0% decizii cu tava doar cu tunuri moarte;
 - Tăieturi câștigate (itemul 3): ≥ 60% din bucăți din lovituri pe încheieturi, 2,5–3,5 bucăți per titan;
+- Scorul tăieturilor (itemul 7): tăieturi curate per titan Smart : Random ≥ 1,3×; steaua „Decapitare” între 20% și 90% din titani pentru fiecare robot; steaua „Linie curată” sub 50% pentru fiecare robot și atinsă măcar o dată (ținta 25–40% pentru Smart e ratată știut, 6.4);
 - simularea e deterministă (aceeași sămânță → același rezultat).
 Separat, mereu (și cu `SKIP_BALANCE=1`): codul roboților nu atinge ajutoare sau reclame, `BotView` expune doar numere, `VisibleColorBias` = 0,65 în cod și în toate preseturile.
 
@@ -603,5 +642,5 @@ Decizii luate la mutare:
 - Robotul **Expert** (rollout-uri de 12 s) nu a fost mutat: nu e cerut în ținte și avea nevoie de clonarea prin reflecție a jocului.
 - **Smart** „nu umple ultimul loc”: un tun fără țintă e trimis doar dacă nimic nu trage sau dacă mai sunt ≥ 3 locuri libere (≥ 2 când toată tava e moartă). Când nimic nu trage, a aștepta nu ajută, așa că trimite oricum (exact ca harness-ul măsurat).
 - „Timp blocat” = nimic nu trage și nu ai nicio atingere utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu culoare vizibilă) — aceeași definiție ca regula 4.2.9.
-- Tăieturile curate și stelele apar în raport abia cu itemul 7 (scorul).
+- De la itemul 7 raportul arată tăieturile curate per titan (și cota lor din bucăți), rata stelelor „Decapitare” și „Linie curată” din titanii doborâți și raportul Smart : Random al tăieturilor curate.
 - De la itemul 4: roboții aleg doar tunuri pe care jocul le acceptă (`BotView.Tappable`, paza ultimului loc), Smart dă +60 etichetei TAIE! (`BotView.TrayCutShot`), iar raportul arată cota zidului din pierderi, marja mediană, „la mustață”, rolul fiecărui titan și intervalul timpilor medii pe titan. `--static` listează titanii n = 1–25 cu rolul și nivelul din ciclu.
