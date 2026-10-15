@@ -1,0 +1,159 @@
+diff -u /home/user/newgame/Assets/Titan/Scripts/Core/Monster.cs Core/Monster.cs
+--- /home/user/newgame/Assets/Titan/Scripts/Core/Monster.cs	2026-10-15 00:59:46.606821071 +0000
++++ Core/Monster.cs	2026-10-15 02:02:06.312921586 +0000
+@@ -59,6 +59,19 @@
+         public int MaxZ { get; private set; }
+ 
+         public bool IsAnchored(Int3 c) => anchored.Contains(c);
++        public bool FarthestFirst;
++        Dictionary<Int3,int> dist;
++        int Dist(Int3 c)
++        {
++            if (dist == null)
++            {
++                dist = new Dictionary<Int3,int>();
++                var q = new Queue<Int3>();
++                foreach (var a in anchored) if (cubes.ContainsKey(a)) { dist[a]=0; q.Enqueue(a);} 
++                while (q.Count>0){ var cur=q.Dequeue(); foreach (var d in Int3.Neighbours){ var n=cur+d; if (cubes.ContainsKey(n) && !dist.ContainsKey(n)){ dist[n]=dist[cur]+1; q.Enqueue(n);} } }
++            }
++            return dist.TryGetValue(c, out var v) ? v : 0;
++        }
+ 
+         /// <summary>Adds a cube. Anchored cubes never fall; by default only the ground row is anchored.</summary>
+         public void Set(Int3 c, int color, bool anchor = false)
+@@ -108,6 +121,7 @@
+                 if (kv.Value != color || !IsVisible(kv.Key)) continue;
+                 var c = kv.Key;
+                 float dx = Math.Abs(c.X - cannonX);
++                if (FarthestFirst && found) { int dc = Dist(c), dt = Dist(target); if (dc != dt) { if (dc > dt) { target = c; bestDx = dx; } continue; } }
+                 if (!found || c.Y > target.Y || (c.Y == target.Y && (dx < bestDx || (dx == bestDx && c.X < target.X))))
+                 {
+                     target = c;
+@@ -123,6 +137,7 @@
+         {
+             cubes.Remove(c);
+             anchored.Remove(c);
++            dist = null;
+             return DropUnsupported();
+         }
+ 
+diff -u /home/user/newgame/Assets/Titan/Scripts/Core/MonsterBuilder.cs Core/MonsterBuilder.cs
+--- /home/user/newgame/Assets/Titan/Scripts/Core/MonsterBuilder.cs	2026-10-15 00:59:46.607415178 +0000
++++ Core/MonsterBuilder.cs	2026-10-15 02:13:31.075134961 +0000
+@@ -61,7 +61,7 @@
+             int belt = Pick(palette, rng, torso);
+             int joint = Pick(palette, rng, torso);
+             int arm = Pick(palette, rng, joint);
+-            int hand = Pick(palette, rng, arm);
++            int hand = System.Environment.GetEnvironmentVariable("HANDARM") == "1" ? arm : Pick(palette, rng, arm);
+             int neck = Pick(palette, rng, torso);
+             int head = Pick(palette, rng, neck);
+             int eye = Pick(palette, rng, head);
+Only in /home/user/newgame/Assets/Titan/Scripts/Core: Titan.Core.asmdef
+diff -u /home/user/newgame/Assets/Titan/Scripts/Core/TitanGame.cs Core/TitanGame.cs
+--- /home/user/newgame/Assets/Titan/Scripts/Core/TitanGame.cs	2026-10-15 01:01:15.856447497 +0000
++++ Core/TitanGame.cs	2026-10-15 02:44:02.568423199 +0000
+@@ -30,6 +30,8 @@
+         /// <summary>Chance that a drawn cannon has a color that is visible right now (the rest is pure luck).</summary>
+         public float VisibleColorBias = 0.65f;
+         public int[] AmmoSizes = { 10, 15, 20, 25, 30 };
++        public bool Salvage, FarthestFirst, PerSlotRefill, Knock, NoTriple, Cycle;
++        public int SalvagedAmmo; public float KbPerCube = 0.05f, KbMax = 3f, StunBase = 1f, StunMax = 2.5f;
+ 
+         public float ApproachSeconds(int level, int cubes) =>
+             Math.Max(MinApproachSeconds, (ApproachBaseSeconds + ApproachSecondsPerCube * cubes) * (float)Math.Pow(ApproachSpeedup, level - 1));
+@@ -157,6 +159,7 @@
+             Line[slot] = cannon;
+             Events.Add(new GameEvent { Kind = EventKind.Deployed, Slot = slot, TraySlot = traySlot, Color = cannon.Color });
+ 
++            if (Config.PerSlotRefill) Tray[traySlot] = Draw();
+             bool trayEmpty = true;
+             foreach (var c in Tray) if (c != null) trayEmpty = false;
+             if (trayEmpty) RefillTray();
+@@ -226,6 +229,46 @@
+                 Score += points;
+                 Events.Add(new GameEvent { Kind = EventKind.PieceFell, Slot = slot, Piece = piece, Points = points });
+             }
++            if (pieces.Count > 0 && Config.Salvage) DoSalvage();
++            if (Config.Knock) foreach (var piece in pieces)
++            {
++                float back = Math.Min(Config.KbMax, Math.Max(0.3f, piece.Count * Config.KbPerCube));
++                Distance = Math.Min(Config.StartDistance, Distance + back);
++                stepTimer -= Math.Min(Config.StunMax, Config.StunBase + piece.Count * 0.01f);
++            }
++        }
++
++        void DoSalvage()
++        {
++            var cnt = new Dictionary<int,int>();
++            foreach (var kv in Monster.Cubes){ cnt.TryGetValue(kv.Value, out int n); cnt[kv.Value]=n+1; }
++            for (int s = 0; s < Line.Length; s++)
++                if (Line[s] != null && !cnt.ContainsKey(Line[s].Color)) { Config.SalvagedAmmo += Line[s].Ammo; Line[s].Ammo = 0; }
++            for (int color = 0; color < MonsterBuilder.MaxColors; color++)
++            {
++                cnt.TryGetValue(color, out int left);
++                int surplus = AmmoAvailable(color) - left;
++                // smallest deck cannons first so whole cannons disappear
++                deck.Sort((a,b)=>a.Ammo.CompareTo(b.Ammo));
++                for (int i = 0; i < deck.Count && surplus > 0; i++)
++                {
++                    if (deck[i].Color != color) continue;
++                    int take = Math.Min(surplus, deck[i].Ammo);
++                    deck[i].Ammo -= take; surplus -= take;
++                    if (deck[i].Ammo == 0) { deck.RemoveAt(i); i--; }
++                }
++                for (int i = 0; i < Tray.Length && surplus > 0; i++)
++                {
++                    var c = Tray[i];
++                    if (c == null || c.Color != color) continue;
++                    int take = Math.Min(surplus, c.Ammo);
++                    c.Ammo -= take; surplus -= take;
++                    if (c.Ammo == 0) Tray[i] = null;
++                }
++            }
++            bool empty = true; foreach (var c in Tray) if (c != null) empty = false;
++            if (empty) RefillTray();
++            else if (Config.PerSlotRefill) for (int i = 0; i < Tray.Length; i++) if (Tray[i]==null) Tray[i]=Draw();
+         }
+ 
+         /// <summary>Lose when all five slots hold cannons and none of them has anything visible to shoot.</summary>
+@@ -256,10 +299,19 @@
+         void SpawnTitan(int level)
+         {
+             Level = level;
+-            Monster = MonsterBuilder.Build(level, rng);
++            int buildLevel = level;
++            if (Config.Cycle)
++            {
++                int c = (level - 1) / 5, p = (level - 1) % 5;
++                buildLevel = p == 0 ? Math.Min(1 + c, 5) : p == 1 ? Math.Min(2 + c, 6) : p == 2 ? Math.Min(3 + c, 6) : p == 3 ? (c >= 2 ? 2 : 1) : Math.Min(4 + c, 8);
++            }
++            Monster = MonsterBuilder.Build(buildLevel, rng);
++            Monster.FarthestFirst = Config.FarthestFirst;
+             Distance = Config.StartDistance;
+             stepTimer = 0f;
+-            ApproachSeconds = Config.ApproachSeconds(level, Monster.Count);
++            ApproachSeconds = Config.Cycle
++                ? Math.Max(Config.MinApproachSeconds, (Config.ApproachBaseSeconds + Config.ApproachSecondsPerCube * Monster.Count) * Math.Max(0.6f, (float)Math.Pow(Config.ApproachSpeedup, level - 1)))
++                : Config.ApproachSeconds(level, Monster.Count);
+             stepLength = Config.StartDistance / (ApproachSeconds / Config.StepInterval);
+             for (int i = 0; i < Line.Length; i++) Line[i] = null;
+             BuildDeck();
+@@ -321,6 +373,17 @@
+                 if (visible.Count > 0) index = visible[rng.Range(0, visible.Count)];
+             }
+             if (index < 0) index = rng.Range(0, deck.Count);
++            if (Config.NoTriple)
++            {
++                int a = -1, b = -1, n = 0;
++                foreach (var t in Tray) if (t != null) { if (n == 0) a = t.Color; else b = t.Color; n++; }
++                if (n == 2 && a == b && deck[index].Color == a)
++                {
++                    var other = new List<int>();
++                    for (int i = 0; i < deck.Count; i++) if (deck[i].Color != a) other.Add(i);
++                    if (other.Count > 0) index = other[rng.Range(0, other.Count)];
++                }
++            }
+             var cannon = deck[index];
+             deck.RemoveAt(index);
+             return cannon;

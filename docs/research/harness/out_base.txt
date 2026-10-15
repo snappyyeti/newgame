@@ -1,0 +1,130 @@
+=== STATIC: titan composition per level (200 seeds each) ===
+lvl cubes colors approach(s) req.shots/s minClear(s) limbs% visible%@spawn hiddenOnlyColors joints armPiece headPiece cannons 
+  1   142    3.0         60        2.35         8.5     48               50             0.00    6.0       16        30     7.7
+  2   160    3.0         62        2.59         9.6     48               50             0.00    6.0       20        30     8.7
+  3   206    4.0         69        2.98        12.4     41               50             0.02    6.0       24        30    11.4
+  4   477    3.9        124        3.86        28.6     40               33             0.03    9.0       48        84    24.7
+  5   516    4.8        125        4.11        31.0     39               33             0.06    9.0       54        84    26.9
+  6   561    4.7        128        4.39        33.7     39               33             0.06   15.0       60        84    29.2
+  7   996    5.5        201        4.95        59.8     39               25             0.14   20.0       96       180    51.4
+  8   996    5.4        191        5.21        59.8     39               25             0.14   20.0       96       180    51.3
+  9  1084    5.5        196        5.52        65.0     36               25             0.14   20.0       96       180    55.4
+ 10  1208    5.5        206        5.86        72.5     41               25             0.17   20.0      104       264    61.2
+ 11  1296    5.5        209        6.20        77.8     38               25             0.15   20.0      104       264    66.5
+ 12  1296    5.5        199        6.53        77.8     38               25             0.12   20.0      104       264    66.1
+PRUNE (counterfactual fix) = False
+
+=================== Random (400 games) ===================
+titans defeated: mean 1.98  p10 0 p50 2 p90 3 max 5
+  distribution: 0:12%  1:20%  2:31%  3:30%  4:6%  5:0%
+run length (s): mean 46 p10 12 p50 39 p90 87
+runs ending <20s 18%  <30s 34%  <60s 68%  >180s 0%; score p50 8157
+slotsFull losses triggered by the player's own tap (5th cannon idle): 41%
+lose reasons: wall 0%  slotsFull 100%  timeout 0%
+   lost on titan 1: 12%  (wall 0, slots 50)
+   lost on titan 2: 20%  (wall 0, slots 81)
+   lost on titan 3: 31%  (wall 0, slots 124)
+   lost on titan 4: 30%  (wall 0, slots 118)
+   lost on titan 5: 6%  (wall 0, slots 25)
+   lost on titan 6: 0%  (wall 0, slots 2)
+   slotsFull losses: mean dead cannons (color gone) on line 3.83/5; with >=1 dead: 96%
+survival (defeated >= k): T1:88% T2:67% T3:36% T4:7% T5:0% T6:0% T7:0% T8:0%
+per-titan clear time (s) / approach (s) / margin left (fraction of distance) when defeated:
+   titan 1: n= 350 clear p50    12s (p10 10 p90 16)  approach 60s  margin p50 0.80 p10 0.75
+   titan 2: n= 269 clear p50    12s (p10 10 p90 17)  approach 62s  margin p50 0.81 p10 0.74
+   titan 3: n= 145 clear p50    17s (p10 13 p90 21)  approach 69s  margin p50 0.75 p10 0.70
+   titan 4: n=  27 clear p50    36s (p10 29 p90 44)  approach 124s  margin p50 0.71 p10 0.64
+   titan 5: n=   2 clear p50    35s (p10 35 p90 36)  approach 125s  margin p50 0.72 p10 0.71
+time shares: no cannon firing (dead air) 5%  line full/can't act 49%  waiting by choice 2%  danger>=75% 0%
+longest no-shot gap per defeated titan: p50 1.1s p90 1.8s
+taps/min 35.3   opportunities: act 46% wait 3% blocked 51%
+decision points (free slot): zero-choice 46% (single cannon 33%, all same color 13%)  no visible option 4%  one dominant visible 7%  >=2 visible colors (real choice) 47%
+dead cannons (color already gone) drawn: 4.3% of draws; deployed dead per game 1.83; surplus ammo created by falling pieces per game 215
+combos: 4704 pieces in 1193 titans => 3.94/titan; games with >=1 combo 100%; size p50 17 p90 42; first combo t-into-titan p50 4s
+   titan 1: 3.82 pieces per titan reached, mean size 13
+   titan 2: 3.83 pieces per titan reached, mean size 15
+   titan 3: 4.07 pieces per titan reached, mean size 16
+   titan 4: 4.24 pieces per titan reached, mean size 36
+   titan 5: 4.41 pieces per titan reached, mean size 39
+   titan 6: 3.50 pieces per titan reached, mean size 57
+dead cannons parked on line: 49% of play time has >=1; avg dead slots 1.35/5; first dead parked p50 at 7s in 97% of games
+pieces triggered by a shot on a joint (shoulder/neck) 38% vs other cube (e.g. arm root) 62%; line cannons stranded (color vanished) by a falling piece: 1.57/game; decisions where every tray cannon is dead 3.5% (single forced dead 2.9%)
+first hard moment: >=3 idle cannons in 96% of games, p50 at 9s (titan p50 1); titan at 75% of the way in 0%, p50 at NaNs (titan p50 NaN); stalled with nothing firing & no visible tray option p50 at 48s (23% of games)
+
+=================== Greedy (400 games) ===================
+titans defeated: mean 2.18  p10 0 p50 2 p90 4 max 6
+  distribution: 0:11%  1:17%  2:28%  3:34%  4:8%  5:1%  6:0%
+run length (s): mean 53 p10 14 p50 45 p90 95
+runs ending <20s 17%  <30s 29%  <60s 61%  >180s 0%; score p50 8354
+slotsFull losses triggered by the player's own tap (5th cannon idle): 48%
+lose reasons: wall 0%  slotsFull 100%  timeout 0%
+   lost on titan 1: 11%  (wall 0, slots 43)
+   lost on titan 2: 17%  (wall 0, slots 68)
+   lost on titan 3: 28%  (wall 0, slots 113)
+   lost on titan 4: 34%  (wall 0, slots 135)
+   lost on titan 5: 8%  (wall 0, slots 34)
+   lost on titan 6: 1%  (wall 0, slots 5)
+   lost on titan 7: 0%  (wall 0, slots 2)
+   slotsFull losses: mean dead cannons (color gone) on line 3.70/5; with >=1 dead: 96%
+survival (defeated >= k): T1:89% T2:72% T3:44% T4:10% T5:2% T6:0% T7:0% T8:0%
+per-titan clear time (s) / approach (s) / margin left (fraction of distance) when defeated:
+   titan 1: n= 357 clear p50    12s (p10 10 p90 16)  approach 60s  margin p50 0.80 p10 0.75
+   titan 2: n= 289 clear p50    13s (p10 10 p90 18)  approach 62s  margin p50 0.81 p10 0.72
+   titan 3: n= 176 clear p50    18s (p10 14 p90 24)  approach 69s  margin p50 0.75 p10 0.67
+   titan 4: n=  41 clear p50    35s (p10 28 p90 46)  approach 124s  margin p50 0.72 p10 0.64
+   titan 5: n=   7 clear p50    44s (p10 38 p90 52)  approach 125s  margin p50 0.65 p10 0.59
+   titan 6: n=   2 clear p50    39s (p10 31 p90 47)  approach 128s  margin p50 0.69 p10 0.63
+time shares: no cannon firing (dead air) 7%  line full/can't act 43%  waiting by choice 11%  danger>=75% 0%
+longest no-shot gap per defeated titan: p50 1.3s p90 1.9s
+taps/min 32.4   opportunities: act 40% wait 17% blocked 43%
+decision points (free slot): zero-choice 58% (single cannon 44%, all same color 14%)  no visible option 32%  one dominant visible 6%  >=2 visible colors (real choice) 33%
+dead cannons (color already gone) drawn: 4.7% of draws; deployed dead per game 1.28; surplus ammo created by falling pieces per game 239
+combos: 5001 pieces in 1272 titans => 3.93/titan; games with >=1 combo 100%; size p50 17 p90 45; first combo t-into-titan p50 4s
+   titan 1: 3.83 pieces per titan reached, mean size 13
+   titan 2: 3.86 pieces per titan reached, mean size 15
+   titan 3: 4.02 pieces per titan reached, mean size 16
+   titan 4: 4.12 pieces per titan reached, mean size 37
+   titan 5: 4.02 pieces per titan reached, mean size 41
+   titan 6: 4.00 pieces per titan reached, mean size 47
+dead cannons parked on line: 51% of play time has >=1; avg dead slots 1.32/5; first dead parked p50 at 8s in 98% of games
+pieces triggered by a shot on a joint (shoulder/neck) 36% vs other cube (e.g. arm root) 64%; line cannons stranded (color vanished) by a falling piece: 1.44/game; decisions where every tray cannon is dead 27.2% (single forced dead 21.6%)
+first hard moment: >=3 idle cannons in 98% of games, p50 at 9s (titan p50 1); titan at 75% of the way in 0%, p50 at NaNs (titan p50 NaN); stalled with nothing firing & no visible tray option p50 at 32s (70% of games)
+
+=================== Smart (400 games) ===================
+titans defeated: mean 2.34  p10 1 p50 3 p90 4 max 6
+  distribution: 0:9%  1:15%  2:24%  3:40%  4:10%  5:2%  6:0%
+run length (s): mean 56 p10 18 p50 54 p90 97
+runs ending <20s 13%  <30s 24%  <60s 55%  >180s 0%; score p50 13770
+slotsFull losses triggered by the player's own tap (5th cannon idle): 74%
+lose reasons: wall 0%  slotsFull 100%  timeout 0%
+   lost on titan 1: 9%  (wall 0, slots 35)
+   lost on titan 2: 15%  (wall 0, slots 59)
+   lost on titan 3: 24%  (wall 0, slots 98)
+   lost on titan 4: 40%  (wall 0, slots 159)
+   lost on titan 5: 10%  (wall 0, slots 42)
+   lost on titan 6: 2%  (wall 0, slots 6)
+   lost on titan 7: 0%  (wall 0, slots 1)
+   slotsFull losses: mean dead cannons (color gone) on line 3.64/5; with >=1 dead: 96%
+survival (defeated >= k): T1:91% T2:76% T3:52% T4:12% T5:2% T6:0% T7:0% T8:0%
+per-titan clear time (s) / approach (s) / margin left (fraction of distance) when defeated:
+   titan 1: n= 365 clear p50    12s (p10 10 p90 15)  approach 60s  margin p50 0.80 p10 0.75
+   titan 2: n= 306 clear p50    12s (p10 10 p90 16)  approach 62s  margin p50 0.81 p10 0.74
+   titan 3: n= 208 clear p50    17s (p10 13 p90 22)  approach 69s  margin p50 0.77 p10 0.70
+   titan 4: n=  49 clear p50    37s (p10 29 p90 47)  approach 124s  margin p50 0.70 p10 0.62
+   titan 5: n=   7 clear p50    45s (p10 39 p90 61)  approach 125s  margin p50 0.64 p10 0.52
+   titan 6: n=   1 clear p50    52s (p10 52 p90 52)  approach 128s  margin p50 0.59 p10 0.59
+time shares: no cannon firing (dead air) 6%  line full/can't act 37%  waiting by choice 14%  danger>=75% 0%
+longest no-shot gap per defeated titan: p50 1.2s p90 1.8s
+taps/min 32.5   opportunities: act 40% wait 22% blocked 38%
+decision points (free slot): zero-choice 61% (single cannon 43%, all same color 18%)  no visible option 27%  one dominant visible 7%  >=2 visible colors (real choice) 29%
+dead cannons (color already gone) drawn: 5.5% of draws; deployed dead per game 2.23; surplus ammo created by falling pieces per game 267
+combos: 5004 pieces in 1336 titans => 3.75/titan; games with >=1 combo 100%; size p50 18 p90 46; first combo t-into-titan p50 3s
+   titan 1: 3.57 pieces per titan reached, mean size 15
+   titan 2: 3.67 pieces per titan reached, mean size 17
+   titan 3: 3.84 pieces per titan reached, mean size 18
+   titan 4: 4.01 pieces per titan reached, mean size 39
+   titan 5: 4.02 pieces per titan reached, mean size 42
+   titan 6: 4.00 pieces per titan reached, mean size 47
+dead cannons parked on line: 51% of play time has >=1; avg dead slots 1.32/5; first dead parked p50 at 7s in 100% of games
+pieces triggered by a shot on a joint (shoulder/neck) 45% vs other cube (e.g. arm root) 55%; line cannons stranded (color vanished) by a falling piece: 1.25/game; decisions where every tray cannon is dead 23.3% (single forced dead 17.9%)
+first hard moment: >=3 idle cannons in 100% of games, p50 at 9s (titan p50 1); titan at 75% of the way in 0%, p50 at NaNs (titan p50 NaN); stalled with nothing firing & no visible tray option p50 at 34s (91% of games)

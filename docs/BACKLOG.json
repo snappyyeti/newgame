@@ -1,0 +1,358 @@
+{
+ "vision": "Titanul din Cuburi (Titan of Cubes): a voxel titan walks toward your wall, and you choose which color cannon to send and when. Every cut is a decision, every titan you bring down ends in a physics avalanche, and every loss is visibly your own fault, so you know how to fix it next run. The game pairs Pixel Flow-quality slot-pressure puzzling with a crumbling titan as the differentiator. Hard titans are always honestly beatable. Ads are opt-in gifts offered at the moment of need, plus rare between-run interstitials. There is no shop.",
+ "pillars": [
+  "Fair and readable: every loss is telegraphed and explainable, with no hidden director, no difficulty that depends on ad history, and no rigged draws. Any tuning must pass the simulator with ad helpers turned off.",
+  "Earned spectacle: limbs and heads fall only when the player sends the joint color. The cut is the core skill, the main reward and the ad-creative money shot.",
+  "One more run: 10-40 s titans in 5-titan cycles that alternate tension and release (WARM/BUILD/PUSH/SPRINT/BOSS), restart in under a second, free checkpoints at cycle starts, and a reason to come back every day (Titanul Zilei plus a forgiving streak).",
+  "Ads are a gift, not a tax: rewarded ads are opt-in with real, previewed value at peak need and rare by design. Interstitials appear only between runs, can be turned off for 30 min with one ad, never interrupt play, and there is no banner."
+ ],
+ "backlog": [
+  {
+   "id": "FND-1",
+   "title": "Simulation harness in repo (Tools/Sim) + shared SeededRandom + CI balance test",
+   "priority": 1,
+   "area": "core",
+   "spec": "Move the throwaway harness (archived at docs/research/harness/: Program.cs, core_experiments.diff, README_EXP.txt, out_*.txt) into Tools/Sim as a clean net8.0 console project. It must compile Assets/Titan/Scripts/Core/*.cs directly via <Compile Include=\"../../Assets/Titan/Scripts/Core/**/*.cs\" />, so there is no copied core and no env-var patch. Experimental flags become real TitanConfig fields as later items land.\n\nBOTS:\n- Random: taps any deployable tray cannon.\n- Greedy: prefers visible colors.\n- Smart: joint-aware; avoids deploys that would leave no free slot; prefers the cut.\n- Tap cadence uniform 0.6-1.6 s; re-check every 0.3-0.6 s while waiting.\n- Fixed dt 0.05.\n- Bots NEVER use ad helpers (revive, extra slot). This is the ethics lock.\n\nCLI: dotnet run -c Release --project Tools/Sim -- --games N --bots random,greedy,smart --preset v2 [--set Key=Value ...]. --set overrides any public TitanConfig field by reflection.\n\nREPORT: the metrics of DESIGN.md 12.1. Per bot:\n- titans defeated (mean/p10/p50/p90)\n- run length and runs ending under 20/30/60 s\n- lose reasons (wall / slotsFull / deadlock)\n- lost on titan k\n- per-titan clear time, approach and margin\n- time shares: dead air, line full, danger >= 75%\n- decision points: zero-choice and >= 2 visible options\n- share of pieces from joint shots, pieces per titan, stranded line cannons\n- clean cuts per titan\n- star rates\nPrint the Smart:Random ratio.\n\nSEEDEDRANDOM: add Core/SeededRandom.cs, a SplitMix64 IRandom with methods matching the existing IRandom. Add the static helpers Hash(ulong a, ulong b) and FromString(string) (FNV-1a 64), and Derive(runSeed, n) = SplitMix64(runSeed ^ (n * 0x9E3779B97F4A7C15)). It is the ONLY seeded RNG used by checkpoints, FTUE and the daily mode. Output must be identical on all platforms: integer math only for seeds; doubles are derived from ulong >> 11.\n\nCI BALANCE TEST: Tools/CoreTests/BalanceTests.cs. Reference the sim bots as a shared source file (Tools/Sim/Bots.cs compiled into both projects). Run 50 games/bot with a fixed master seed and assert the coarse guards (list below). The test is skipped with [Category(\"Balance\")] when the env var SKIP_BALANCE=1; it runs by default.\n\nREADME: replace the stale simulation table with a pointer to Tools/Sim and DESIGN.md.",
+   "acceptance_criteria": [
+    "dotnet run --project Tools/Sim -- --games 200 --preset current reproduces the baseline within \u00b110% relative: Random mean titans about 1.98 and Smart about 2.34, with 100% of losses slotsFull.",
+    "Tools/Sim compiles the real Core files (no copies); changing TitanConfig in Assets is reflected without any other edit.",
+    "SeededRandom: the same seed gives the same first 1000 values in a golden-value test, and Derive(s,n) differs for n and n+1.",
+    "No bot code path calls any ad or helper API (grep test or an interface the bots cannot reach).",
+    "The BalanceTests category exists and runs under dotnet test in under 60 s on a dev machine.",
+    "README simulation table updated."
+   ],
+   "config": "No TitanConfig changes. New: Core/SeededRandom.cs; Tools/Sim project; Tools/CoreTests/BalanceTests.cs."
+  },
+  {
+   "id": "CORE-1",
+   "title": "Salvage: severed pieces take their ammo with them (dead-ammo fix)",
+   "priority": 2,
+   "area": "both",
+   "spec": "CORE (Assets/Titan/Scripts/Core)\n\n1) Monster keeps int[] colorCount (length MonsterBuilder.MaxColors).\n- Update it in Set (if a cube is replaced, decrement the old color), in Remove, and in DropUnsupported (decrement per dropped cube).\n- CountOfColor(c) is O(1).\n\n2) New EventKind.Salvaged. GameEvent gets a new int Ammo field. Also uses Slot (line index or -1), TraySlot (tray index or -1), Color and Points.\n\n3) Private TitanGame.Salvage(). Call it (a) at the end of Shoot() when pieces.Count > 0, and (b) at the top of CheckSlotsFull(). Steps:\n  i) For each line slot with a cannon whose color has CountOfColor == 0:\n     - points = Ammo * PointsPerSalvagedAmmo\n     - Score += points\n     - emit Salvaged{Slot=s, Color, Ammo, Points}\n     - Line[s] = null\n  ii) For each color: surplus = (deck ammo + tray ammo) - CountOfColor. If surplus > 0, subtract it from deck cannons of that color in ascending Ammo order, removing any that reach 0. No event, no points.\n  iii) Any surplus still left comes off tray cannons of that color, index 0..2:\n     - Subtract and emit Salvaged{TraySlot=i, Ammo=taken, Points=taken*5}.\n     - If Ammo reaches 0, set Tray[i] = null.\n  iv) If the tray is now all null, RefillTray(). Under CORE-3 PerSlot, refill each nulled slot instead.\n\n4) INVARIANT, after every Tick:\n- No line cannon's color has a count of 0.\n- For every color, deck + tray ammo <= CountOfColor.\n- At spawn, ammo == cubes (the existing test stays).\n\nVIEW (ArenaView/GameController)\n- Salvaged on a line slot: the cannon spins 360 degrees on Y and flies up 6 units over 0.35 s, then is destroyed. Popup 'RECUPERAT +{Points}'.\n- Salvaged on a tray slot: a '-{Ammo}' label in the color flies from the fallen piece's centroid to the tray cannon over 0.3 s, then the ammo label lerps to its new value over 0.3 s. If the ammo reaches 0, play the existing ShrinkAway (0.25 s).\n- Sound: deploy sound at pitch 1.5.\n- These animations are mandatory, not polish: a silently dropping number reads as cheating.\n\nHUD: GameController.AmmoTag must keep 'zzz' only for cannons whose color still exists. With salvage, dead cannons cannot exist on the line.\n\nSHIP GATE: expose public bool SalvageActive => Config.SalvageEnabled. ADS-2 placements check it (see ADS-2).\n\nREADME: update rule 4 and the scoring line (+5 per salvaged ammo).",
+   "acceptance_criteria": [
+    "Test CuttingAnArmRemovesItsAmmo: for level 1 at several seeds, removing one shoulder's joint cubes leaves, for every color, deck+tray ammo <= CountOfColor, and no line cannon has count 0.",
+    "Property test over 200 seeds: random legal taps every 1 s for 120 s simulated at dt 0.05; the invariant holds after every Tick.",
+    "AmmoMatchesCubesExactly still passes at spawn.",
+    "Tools/Sim with SalvageEnabled=true and other settings current: mean titans Random >= 5.5 and Smart >= 6.0; runs under 20 s at 0% for all bots; stranded line cannons 0.00 per game; decisions where every tray cannon is dead 0%.",
+    "In the Unity editor, cutting an arm visibly flies matching line cannons off with 'RECUPERAT' and counts down tray labels."
+   ],
+   "config": "TitanConfig.SalvageEnabled = true; TitanConfig.PointsPerSalvagedAmmo = 5. New EventKind.Salvaged; GameEvent.Ammo."
+  },
+  {
+   "id": "CORE-2",
+   "title": "Earned cuts: farthest-first targeting, unified part-tag API, honest 'TAIE!' tag",
+   "priority": 3,
+   "area": "both",
+   "spec": "CORE\n\n1) Part tags, the single API used by every later system. In Monster:\n- Dictionary<Int3,byte> part (0 body, 1 left arm, 2 right arm, 3 head; 4+ reserved).\n- HashSet<Int3> joints (shoulder and neck cubes).\n- int[] originalPartSize, recorded at build time.\n- Public: int PartOf(Int3), bool IsJoint(Int3), int OriginalPartSize(int part), int RemainingPartSize(int part) (kept up to date in Remove/DropUnsupported).\n- MonsterBuilder fills these.\n- FallenPiece gains int Part = the majority PartOf over its cubes (head wins ties).\n\n2) supportDist: Dictionary<Int3,int> computed lazily by multi-source BFS over face neighbours from all anchored cubes (anchored = 0). Invalidate it (set to null) in Remove and DropUnsupported. Cache it; never recompute per PickTarget call within the same removal epoch.\n\n3) TitanConfig.TargetOrder enum {HighestFirst, FarthestFirst}, default FarthestFirst. It is passed to Monster at spawn. Monster.PickTarget(color, cannonX), among VISIBLE cubes of that color, orders by:\n   (1) max supportDist when FarthestFirst\n   (2) max Y\n   (3) min |X - cannonX|\n   (4) min X\n\n4) MonsterBuilder: hand = arm color (remove the separate hand pick). Arm cubes on the bottom row are stored in HashSet<Int3> gloves, for the view only (shape cue, NOT a darker tint).\n\n5) Cut prediction: public int ShotsToSever(Cannon c). Clone the Monster's color set, simulate PickTarget/Remove for c.Ammo shots of c.Color with no other cannons, and return the shot index at which a piece containing a joint's part falls, or -1. Results are cached per (tray slot, monster epoch).\n\nVIEW\n- Joint cubes get a child stripe: a cube primitive scaled (1.04, 0.14, 1.04) at local y 0, plain white material. This is the 'cus\u0103tur\u0103' (stitch).\n- Glove cubes get a 0.9-scale inset child cube of the same color with edge lines. Never change cube luminance.\n\nHUD\n- Above each tray cannon where ShotsToSever >= 0, draw a yellow 'TAIE!' tag (fontSize 18*s, rect 64x22*s, 4*s above the ammo tag), with alpha pulsing 0.7-1.0 at 3 Hz.\n- If the cannon's color owns a visible joint but ShotsToSever == -1, draw a hollow 'taie \u00een N' hint only when another cannon of that color is in the tray or on the line. Otherwise draw nothing.\n\nTESTS\n- LimbCannonNeverSeversLimb: for 50 seeds at levels 1, 4 and 7, take the arm color; repeatedly Remove(PickTarget(armColor)) while it succeeds and assert no piece ever falls.\n- JointCutDropsWholeArm: arm count includes gloves.\n- Update TargetIsTheHighestVisibleCube to set TargetOrder=HighestFirst.\n- TaieTagIsHonest: for 100 seeds, any tray cannon with ShotsToSever >= 0, deployed alone on an empty line with no other cannons, severs a piece within its ammo.\n- Part API: OriginalPartSize(left arm) == count of part-1 cubes at build; RemainingPartSize decreases on Remove.\n\nREADME: update the targeting rule and the combo rule.",
+   "acceptance_criteria": [
+    "All four new tests pass, plus the existing suite (with the HighestFirst update).",
+    "Tools/Sim (preset with salvage + FarthestFirst): share of pieces attributed to a joint shot >= 60% for all bots (was 31-38%); pieces per titan 2.5-3.5; median run length not lower than the CORE-1 result minus 10%.",
+    "No 'TAIE!' tag appears on a cannon that cannot reach the joint (TaieTagIsHonest).",
+    "PickTarget performance: 1000 calls on a level-8 monster in under 50 ms in a dotnet test (BFS cached)."
+   ],
+   "config": "TitanConfig.TargetOrder = FarthestFirst (enum {HighestFirst, FarthestFirst}). Builder: hand color = arm color."
+  },
+  {
+   "id": "CORE-3",
+   "title": "Loop v2: conveyor tray + titan clock (knockback, near-miss) + 5-titan sawtooth cycles, tuned together",
+   "priority": 4,
+   "area": "both",
+   "spec": "Ship these three together under one preset. Never ship the per-slot tray without the clock: the harness showed Smart hitting the 30-min cap in 98% of games.\n\nA) CONVEYOR TRAY\n- TitanConfig.TrayRefill enum {Batch, PerSlot}, default PerSlot; NoTripleColor = true.\n- Deploy in PerSlot mode: Tray[traySlot] = Draw(); emit TrayRefilled{TraySlot=traySlot} (TraySlot = -1 keeps the old all-slots meaning).\n- Draw, after the unchanged bias logic: if NoTripleColor and the two other non-null tray cannons share color X and the drawn color == X, pick uniformly (rng) among deck cannons with Color != X, if any exist.\n- After CORE-1 salvage nulls a tray slot, Draw into it.\n- An empty deck leaves a null slot, drawn as a dark ring labelled 'pachet gol'.\n- View: the new cannon rises from 2.5 units below its tray position over 0.18 s; deploy sound at pitch 1.2, volume 0.35.\n\nB) TITAN CLOCK\n- Approach(n, cubes) = max(MinApproachSeconds, (ApproachBaseSeconds + perCube*cubes) * max(MinApproachFactor, ApproachSpeedup^(n-1))).\n- perCube = TutorialSecondsPerCube when n <= TutorialTitans, else ApproachSecondsPerCube.\n- Knockback in Shoot, for each FallenPiece p:\n  - back = clamp(p.Count*KnockbackPerCube, KnockbackMin, KnockbackMax)\n  - Distance = min(StartDistance, Distance + back)\n  - stepTimer -= min(StunMax, StunBase + StunPerCube*p.Count)\n  - emit EventKind.Staggered{Distance, Piece}\n- DefeatTitan: if Distance <= NearMissFraction*StartDistance, bonus = round(bonus*NearMissBonusMult) and GameEvent.NearMiss = true.\n- View, Staggered: the titan root lerps to its new Z over 0.3 s with a 10-degree back-lean (ease out); Roar if piece >= 20 cubes; Shake(0.15, 0.25).\n- View, NearMiss: gold banner 'LA MUSTA\u021a\u0102!  x1.5' for 1.6 s; fanfare at pitch 1.15.\n- Danger = 1 - Distance/StartDistance. At >= 0.75:\n  - procedural heartbeat: two 55 Hz thumps 0.12 s apart every 0.8 s, volume 0.4 rising to 0.7 at 0.95\n  - red border made of 4 rects (6% of screen width), alpha 0.12 + 0.13*sin(t*8). Pulse <= 3 Hz.\n  - Under the 'Efecte reduse' setting (UX-1), the border is static.\n\nC) CYCLES (UseCycles = true). In SpawnTitan(n): c = (n-1)/5, p = (n-1)%5, then:\n- p0 WARM: L = min(1+c, 5)\n- p1 BUILD: L = min(2+c, 6)\n- p2 PUSH: L = min(3+c, 6)\n- p3 SPRINT: L = (c >= 2 ? 2 : 1)\n- p4 BOSS: L = min(4+c, 8)\nMonster = MonsterBuilder.Build(L, rng). Level stays n.\n- Public enum TitanRole {Normal, Sprint, Boss}; TitanGame.Role; GameEvent.Role on TitanSpawned.\n- Defeat bonus = DefeatBonusPerLevel * n * (Boss ? 2 : 1) * nearMiss, plus leftover as today.\n- BossExtraColor flag, default false (not validated).\n- View on spawn:\n  - Sprint: green 'TITAN RAPID!' banner for 1.2 s; deploy sound at pitch 1.4.\n  - Boss: red 'TITAN GIGANT!' banner for 1.8 s; Roar; Shake(0.3, 0.6).\n- HUD under the score: 'Ciclul {c+1} \u00b7 Titanul #{n}' plus 5 cycle dots, filled when cleared; dot 5 carries a crown glyph drawn as a texture.\n- NOTHING ad-related happens between titans.\n\nD) TUNING PASS (part of this item)\n- Use Tools/Sim with --set to search ApproachSecondsPerCube in [0.075, 0.095], TutorialSecondsPerCube in [0.10, 0.14] and ApproachSpeedup in {0.98, 0.985}, keeping the knockback values.\n- Choose the combination that best meets the targets in the acceptance criteria.\n- Measured starting point (out_C1): Random wall share 71% (too high), runs <20 s 7%, Smart:Random 1.74x.\n- Record the chosen values in TitanConfig and in DESIGN.md 4.3.\n\nTESTS\n- After Deploy(i) in PerSlot mode, Tray[i] != null while the deck is non-empty.\n- 500 seeded draws never produce 3 non-null tray cannons of one color when the deck held another color.\n- TrayRefillsWhenAllThreeAreUsed is updated to set Batch.\n- A 40-cube piece moves Distance back by 1.2 and delays the next Step by 0.9 s.\n- Distance never exceeds StartDistance.\n- Near-miss multiplies the bonus.\n- Cycle mapping table for n = 1..30 (n=5 gives L4 Boss; n=9 gives L1 Sprint; n=14 gives L2; n=25 gives L8).\n- The boss bonus doubles on n % 5 == 0.\n\nREADME: rewrite the rules and the titan table for cycles.",
+   "acceptance_criteria": [
+    "All unit tests listed pass.",
+    "Tools/Sim, 300 games/bot, preset v2: Random titan-1 loss < 2% and Smart < 1%.",
+    "Runs ending under 20 s: Random <= 1%, Smart 0%.",
+    "Smart:Random mean titans between 1.7x and 2.3x.",
+    "Random wall share of losses 35-55%; Smart 40-70%.",
+    "Per-titan median clear 10-40 s for titans 1-16 (sprint <= 16 s, boss <= 40 s).",
+    "Median run: Random 120-200 s, Smart 240-420 s; Smart reaches the 30-min cap in < 2% of games.",
+    "Decision points with >= 2 visible options >= 65% (Smart); zero-choice <= 25%; time with line full <= 25%.",
+    "Median margin at defeat 0.25-0.45; time at danger >= 75% between 4% and 10%.",
+    "The BalanceTests CI guard is updated to these thresholds (coarse versions at 50 games)."
+   ],
+   "config": "TrayRefill=PerSlot; NoTripleColor=true; ApproachBaseSeconds=4; ApproachSecondsPerCube=0.075 (tune 0.075-0.095); MinApproachSeconds=12; ApproachSpeedup=0.98 per titan number n; MinApproachFactor=0.6; TutorialTitans=3; TutorialSecondsPerCube=0.11 (tune 0.10-0.14); KnockbackPerCube=0.03; KnockbackMin=0.3; KnockbackMax=1.5; StunBase=0.5; StunPerCube=0.01; StunMax=1.0; NearMissFraction=0.15; NearMissBonusMult=1.5; UseCycles=true; BossBonusMult=2; BossExtraColor=false."
+  },
+  {
+   "id": "CORE-4",
+   "title": "Readable threat: last-slot guard, honest deadlock, slot pips, hidden-color chip",
+   "priority": 5,
+   "area": "both",
+   "spec": "CORE\n\n1) public enum DeployBlockReason {None, LineFull, WouldJam, NotAvailable}; public DeployBlockReason DeployBlock(int traySlot).\n- WouldJam is true when ALL of these hold:\n  - exactly one line slot is free\n  - every non-null line cannon has no visible cube of its color\n  - the tray cannon has no visible cube of its color\n- CanDeploy returns DeployBlock == None.\n\n2) Deadlock. float stuckTimer, updated in Tick after cannons fire.\n- stuck = (no line cannon has a visible color) AND (free slots == 0 OR (free == 1 AND no tray cannon has a visible color)).\n- free >= 2 is never stuck.\n- If stuck, stuckTimer += dt; otherwise reset it to 0.\n- At stuckTimer >= DeadlockSeconds: Lose(LoseReason.Deadlock) (new enum value).\n- The existing all-5-idle CheckSlotsFull stays immediate.\n\n3) Expose int[] VisibleCountByColor() (cached per frame by the caller) and int HiddenOnlyColorCount() = colors with CountOfColor > 0 and 0 visible.\n\nHUD\n- Slot pips: 5 squares (28*s, gap 8*s), centered just above the wall line (projected from SlotX via Camera.WorldToScreenPoint).\n  - Empty: outline only. Firing: filled with the cannon color plus its UX-1 symbol. Idle: grey 0.35 with a 'zzz' glyph.\n  - Border by idle count: 0-2 white; 3 amber (1, 0.7, 0.1); 4+ red (1, 0.2, 0.15), pulsing at 4 Hz (static under 'Efecte reduse').\n- Guard feedback:\n  - WouldJam: view.ShakeTray(i) plus the banner 'Ar bloca ultimul loc! Alege o culoare vizibil\u0103.' for 1.6 s.\n  - LineFull: keep 'Toate cele 5 locuri sunt ocupate!'.\n  - A blocked tap NEVER opens any ad card. This is a hard rule, tested in ADS-2.\n- Hidden-color chip: when HiddenOnlyColorCount > 0, one chip under the danger bar reading '{k} culori ascunse ?'.\n- Game-over reason text for Deadlock: 'BLOCAT! Niciun tun nu mai are \u00een ce trage.'\n\nTESTS\n- WouldJam blocks a deploy that previously ended the game instantly.\n- The deadlock fires at exactly 1.5 s, only under the exact condition.\n- With 2 free slots and only hidden-color tray cannons, there is no loss.\n- The deadlock timer resets when a color becomes visible.",
+   "acceptance_criteria": [
+    "Unit tests above pass.",
+    "Tools/Sim: SlotsFull losses triggered by the player's own tap fall to 0% (the guard makes the instant self-kill impossible); total losses still meet the CORE-3 targets after a re-check, with retuning recorded if needed.",
+    "No game state ever sits in dead air longer than 1.5 s without an action available (sim assertion: max continuous stuck time <= 1.55 s).",
+    "On a 360x640 dp layout in the Unity editor, the pips do not overlap the cannons on the wall or the tray, and remain readable in greyscale (shape plus fill, not color alone)."
+   ],
+   "config": "DeadlockSeconds=1.5; new LoseReason.Deadlock; DeployBlockReason enum."
+  },
+  {
+   "id": "FTUE-1",
+   "title": "Scripted first titan with a giant cut in the first seconds + 4 contextual hints + funnel",
+   "priority": 6,
+   "area": "both",
+   "spec": "Merges proposals C10 and R2; C10's scripted titan replaces R2's seed search.\n\nCORE\n- Optional ITitanScript for n == 1, used while profile.totalRuns < 3. Tutorial titan = MonsterBuilder level 1 with a fixed palette:\n  - boot = leg = Y(2)\n  - torso front and belt = R(0)\n  - core = Y(2)\n  - shoulders = neck = Y(2)\n  - arm = head = B(1)\n  - eye = Y(2)\n- Scripted tray slot 0 = a yellow cannon whose Ammo = the shots FarthestFirst needs to sever both shoulders and the neck. Compute this at build time by simulating on a clone, capped at the yellow cube count.\n- Slots 1-2 are drawn normally from the deck. The scripted cannon's ammo is taken out of the deck, so total ammo still equals cubes.\n- TitanGame.HoldApproach = true until the first Deployed event (the titan does not step before the first tap).\n- Titans 1-3 use the tutorial pace from CORE-3.\n\nHINTS (GameController; Romanian/English through the UX-1 string table)\n- At most one hint at a time. Each shows once per install (profile.ftueFlags bits). None blocks input; none covers the tray.\n- H1, titan 1 start: pulsing ring around tray slot 0, with the text 'Atinge tunul galben' ABOVE the tray. Removed on the first tap.\n- H2: the first time a line cannon is idle >= 1.0 s (expected on titan 2): ring that slot for 2.5 s; text 'zzz = culoarea e ascuns\u0103 \u00een spate. Va trage c\u00e2nd apare.'\n- H3: the first time >= 3 line cannons are idle: arrow at the CORE-4 slot pips; text 'Nu umple toate cele 5 locuri!' for 2.5 s.\n- H4: on the first ever game over, a one-line cause plus 'Sfat: las\u0103 mereu 1-2 locuri libere.' Causes:\n  - 'Toate cele 5 locuri erau pline cu tunuri care a\u0219teptau.'\n  - 'Titanul a ajuns la zid.'\n  - 'Niciun tun nu mai avea \u00een ce trage.'\n\nBOOT: while totalRuns < 3, launch goes straight into gameplay with no overlay.\n\nAD GATE: AdGovernor (ADS-1) refuses every offer, including free-first teaching uses, and every interstitial while lifetime_runs < 3 OR lifetime_play_s < 600. If ADS-1 has not landed yet, put the gate in GameController as a constant check.\n\nFUNNEL (R1 log; event names stable):\n- tut_step_{1..4}_shown and tut_step_{1..4}_done\n- titan_n_reached\n- run_end(length, reason)\n- run_3_started_same_session",
+   "acceptance_criteria": [
+    "Test ScriptedTitanGiantCut: on the tutorial titan with the scripted tray, Deploy(0) then Tick(0.05) steps severs >= 3 pieces within 4.0 s of simulated time. The test is re-run automatically, so a CORE-2 targeting change that breaks it fails CI.",
+    "Test: total ammo == total cubes on the scripted titan at spawn.",
+    "Test: the titan's Distance is unchanged until the first Deploy when HoldApproach is set.",
+    "Tools/Sim with the script for titan 1 (Random bot): titan 1 defeated in >= 99% of games; first piece falls at a median <= 6 s after the first deploy.",
+    "In the editor, hints appear once each, never overlap each other, and the H1 ring does not intercept taps."
+   ],
+   "config": "FtueScriptedRuns=3; HoldApproachUntilFirstDeploy=true (FTUE only); ad gate: AdConfig.min_lifetime_runs_any_ad=3, min_lifetime_play_s_any_ad=600."
+  },
+  {
+   "id": "CORE-5",
+   "title": "Cut scoring (clean cut + chain) and end-of-titan 3-star grade, one multiplier model",
+   "priority": 7,
+   "area": "both",
+   "spec": "Requires the CORE-2 part API. This is the ONLY in-titan multiplier system; R6's separate 'Lan\u021b Perfect' is not built.\n\nCORE\n- TitanGame tracks float gameTime, float lastPieceTime and int chain.\n- On each FallenPiece p in Shoot:\n  - part = p.Part\n  - clean = p.Count >= CleanCutThreshold * OriginalPartSize(part)\n  - chain = (gameTime - lastPieceTime <= ChainWindowSeconds) ? chain+1 : 1; lastPieceTime = gameTime\n  - mult = (clean ? CleanCutMult : 1) * min(chain, ChainMaxMult)\n  - points = p.Count * PointsPerFallenCube * mult\n  - GameEvent fields: bool Clean, int Chain, int Part\n- chain resets on TitanSpawned.\n- Run stats: maxPiecePoints, maxChain, piecesCut, headsCut.\n- Expose bool IsCleanEligible(part) = RemainingPartSize(part) >= CleanCutThreshold * OriginalPartSize(part) && part attached. The view uses it.\n\nSTARS on DefeatTitan (GameEvent.Stars bitmask):\n- s1 = defeated\n- s2 = a clean head piece fell this titan ('Decapitare')\n- s3 = maxOccupiedLine <= CleanLineMax ('Linie curat\u0103'), where maxOccupied is tracked over all ticks and deploys\n- The stars add NO extra multiplier.\n\nVIEW / HUD\n- The joint stitch gets a gold rim while IsCleanEligible(part).\n- The chain window is a draining arc next to the score while gameTime - lastPieceTime < 4 s.\n- Piece popup, stacked lines:\n  - clean head: 'DECAPITARE!'\n  - clean otherwise: 'T\u0102IETUR\u0102 CURAT\u0102!'\n  - not clean: 'BUCAT\u0102 RUPT\u0102!'\n  - if chain >= 2: 'COMBO x{chain}'\n  - then '+{points}'\n  - scale 1 + 0.15*(chain-1), capped at 1.6; gold when mult >= 4\n- Popup priority: one big popup at a time; newer ones queue at most 0.3 s, otherwise merge into the current one.\n- Defeat banner: 3 star glyphs (textures) popping in at 0.15 s intervals with rising pitch ticks. A missing star is grey with a one-line reason: 'Capul nu a c\u0103zut \u00eentreg' or 'Ai avut {k} tunuri pe zid'.\n- Live 3-dot indicator under the danger bar; the third dot turns grey the moment maxOccupied > CleanLineMax.\n- Game-over panel: 'Cea mai bun\u0103 t\u0103ietur\u0103: +{maxPiecePoints}', 'Combo maxim: x{maxChain}'.\n\nBEST SCORE KEY: titan_best_v2 (the old key is ignored for comparison and kept only for migration display).\n\nTUNING: in Tools/Sim, choose CleanLineMax (3 or 4) so that Smart earns s3 on 25-40% of titans and the wall-loss share does not rise by more than 5 points. Add clean-cut and star stats to the report.\n\nTESTS\n- An intact arm cut gives clean x2.\n- An arm eroded below 80% is not clean.\n- Chain increments within 4 s and resets after.\n- Chain caps at x5.\n- Stars bitmask for scripted scenarios: a neck-only cut gives s2; <= 3 cannons gives s3.",
+   "acceptance_criteria": [
+    "Unit tests above pass.",
+    "Tools/Sim: clean cuts per titan, Smart >= 1.5x Random; Smart s3 rate 25-40% of titans; CORE-3 targets still hold.",
+    "Score popups never stack more than one large popup on screen (editor check at 360x640).",
+    "The README scoring section is updated to the single multiplier model."
+   ],
+   "config": "CleanCutThreshold=0.8; CleanCutMult=2; ChainWindowSeconds=4; ChainMaxMult=5; CleanLineMax=3 (tune 3-4); PlayerPrefs best key titan_best_v2."
+  },
+  {
+   "id": "UX-1",
+   "title": "Readability and reach: colorblind symbols/patterns, pause and auto-pause, settings, reduced effects, RO/EN string table",
+   "priority": 8,
+   "area": "unity",
+   "spec": "1) COLOR SYMBOLS\nColorStyle table in Game/ColorStyle.cs:\n\n| Palette index | Cube pattern | Symbol |\n|---|---|---|\n| 0 | plain | circle |\n| 1 | horizontal stripes | square |\n| 2 | dots | triangle |\n| 3 | diagonal | diamond |\n| 4 | checker | cross |\n| 5 | grid | star |\n\n- Cube materials: a procedural 32x32 Texture2D per color (contrast \u00b115% albedo by default, \u00b130% when the setting 'Simboluri culori' is on), point filtered, one shared material per color.\n- Symbols are drawn as procedural textures (not font glyphs) on tray cannons, line cannons, slot pips, the hidden-color chip and the share-result squares.\n- Cosmetics and effects never change cube albedo.\n\n2) PAUSE\n- Top-right pause button (48*s).\n- OnApplicationPause(true) or OnApplicationFocus(false) auto-pauses.\n- Resume needs a tap on 'Continu\u0103'; no countdown.\n- While paused: Time.timeScale = 0, no Tick, AudioListener.pause = true.\n- Pause menu: Continu\u0103; Sunet on/off; Vibra\u021bii on/off; Efecte reduse on/off; Simboluri culori on/off; Limba RO/EN; slot reserved for 'F\u0103r\u0103 reclame 30 min' (ADS-1 fills it); Joc nou (with confirm).\n\n3) EFECTE REDUSE: disables screen shake, hitstop, FOV punch, slow-mo and pulsing borders (static instead). Read by Fx, ArenaView and the HUD through one static Settings class.\n\n4) LOCALIZATION\n- Game/Loc.cs: Loc.T(key, args) backed by a Dictionary<string,string[]> {ro, en}.\n- Move EVERY existing and new HUD string into it.\n- Default language = ro if Application.systemLanguage == Romanian, else en. Stored in settings.\n- English copy written with the same rules (no loss framing).\n\n5) FONT CHECK: render '\u0103\u00e2\u00ee\u0219\u021b\u0102\u00c2\u00ce\u0218\u021a' in the IMGUI default font in the editor. If any glyph fails, log it; a bundled font is a separate asset decision.\n\nPersistence: settings live in PlayerPrefs until RET-1, then move into the profile.",
+   "acceptance_criteria": [
+    "Pure C# test (Core/ColorStyleTable or a Game-agnostic copy): 6 unique patterns and 6 unique symbols.",
+    "Pure C# test: for every pair of the 6 palette colors, either the Machado deuteranopia/protanopia-simulated colors differ by deltaE76 >= 20, or their patterns differ (always true, which documents the reliance on patterns).",
+    "With the screen converted to greyscale (editor debug toggle), every tray cannon's color can be identified by its symbol.",
+    "Backgrounding the app during a titan pauses the simulation; on return the titan has not moved.",
+    "No user-facing string literal remains in GameController/ArenaView outside Loc (grep check in a test or a script).",
+    "Toggling 'Efecte reduse' removes all shake and hitstop (verified by Fx calls returning early)."
+   ],
+   "config": "Settings: sfx=true, haptics=true, reducedFx=false, colorSymbols=true, lang=auto. No TitanConfig changes."
+  },
+  {
+   "id": "FEEL-1",
+   "title": "Juice pass (hitstop, camera punch, pitch streak, haptics) + mobile performance budget",
+   "priority": 9,
+   "area": "unity",
+   "spec": "JUICE (no gameplay change; the finisher collapse is deferred)\n\n1) GameController.HitStop(seconds, scale), unscaled.\n- Calls never stack; take the max remaining.\n- Hard cap: total freeze <= 10% of any rolling 1 s.\n- Disabled under Efecte reduse.\n- Time.timeScale returns to 1 on pause and on game over.\n\n2) Triggers:\n- PieceFell with size >= 12: HitStop(0.08, 0.05) plus FOV -3% returning over 0.25 s.\n- Head piece or clean cut >= 40 cubes: HitStop(0.06, 0.05) then timeScale 0.35 for at most 0.15 s unscaled.\n- No slow-mo of any kind when danger >= 0.85 (last 15% of the approach).\n- TitanDefeated: HitStop(0.12, 0.05).\n\n3) Audio: a dedicated hit AudioSource.\n- Per line slot, a hitStreak that resets after 0.5 s without a hit.\n- pitch = min(1.6, 1 + 0.04*hitStreak).\n\n4) Haptics: #if UNITY_ANDROID || UNITY_IOS Handheld.Vibrate() #endif\n- Only on: pieces >= 40 cubes, boss defeat, near-miss win.\n- Min interval 0.6 s; respects the Vibra\u021bii setting.\n\nPERFORMANCE BUDGET\n5) Dev overlay (F8 in the editor, or a 3-finger long-press on device): fps, p95 frame ms over the last 300 frames, active GameObjects, active rigidbodies.\n\n6) Pool projectiles and popups (no Instantiate per shot).\n\n7) A fallen piece is one Rigidbody parent with child cubes. If the piece has > 60 cubes, combine the children into one mesh per color (Mesh.CombineMeshes) on fall.\n\n8) Target: 60 fps. Floor: p95 frame <= 33 ms on a 2022 mid-range Android, during a level-8 boss with 3 pieces falling.\n- If the floor is missed, combine the anchored body into per-color meshes, rebuilt at most once per frame when dirty.\n- Record the measured numbers in DESIGN.md section 7.\n\n9) Log fps_p95 per run to the RET-1 log (event perf, a=p95 ms, b=titan level).",
+   "acceptance_criteria": [
+    "HitStop never exceeds 10% freeze per second (an editor play-mode assertion logs a warning if it does).",
+    "No slow-mo is applied when danger >= 0.85 (code path guarded, plus a play-mode test or debug assertion).",
+    "Haptics fire at most once per 0.6 s and never when the setting is off.",
+    "Zero per-shot Instantiate calls (profiler check: GC alloc per shot ~0).",
+    "Measured p95 frame time on the target device (or the editor's 'Low' quality profile as a proxy, documented) <= 33 ms on a level-8 boss; numbers written to DESIGN.md."
+   ],
+   "config": "HitStopMaxFraction=0.10; HapticMinInterval=0.6; PieceMeshCombineThreshold=60; PerfTargetFps=60; PerfP95FloorMs=33."
+  },
+  {
+   "id": "RET-1",
+   "title": "Slim profile + local telemetry + free seeded checkpoints at cycle starts",
+   "priority": 10,
+   "area": "both",
+   "spec": "Merges proposals R1 (slim), C11 and R8. Checkpoints are FREE and never ad-gated.\n\nPROFILE\nCore/Profile.cs: pure C#, [Serializable], public fields only. v1 fields:\n- int version = 1\n- int bestScore (v2 key semantics)\n- int bestTitanN\n- int totalRuns\n- float totalPlaySeconds\n- int ftueFlags\n- Checkpoint {int n; int score; long runSeed}\n- Settings {bool sfx, haptics, reducedFx, colorSymbols; string lang}\n- int firstPlayDay, lastPlayDay, maxSeenDay\n- List<LogEntry> log {long t; string e; int a; int b}, a ring of 300\nAdd fields only when their feature ships (RET-3 and ADS-1 append theirs).\n\nCore/DayClock.cs\n- DayNumber(local) = (local.Date - 2026-01-01).Days.\n- Rollback guard: today = max(DayNumber(now), maxSeenDay - 1); then maxSeenDay = max(maxSeenDay, today).\n- LOCAL day everywhere (ads included).\n\nGame/ProfileStore.cs\n- ISerializer, with a JsonUtility implementation in Game.\n- Load order: persistentDataPath/titan_profile.json, then PlayerPrefs 'titan_profile_v1', then new. A new profile migrates 'titan_best' into a displayed legacy best.\n- On parse failure, fall back to the next source and log 'save_corrupt'.\n- Save: write to .tmp, File.Copy over the final file, delete .tmp, mirror to PlayerPrefs, PlayerPrefs.Save().\n- Save on: TitanDefeated, GameOver, checkpoint, settings change, OnApplicationPause(true), OnApplicationQuit. Never per frame.\n\nTELEMETRY\n- interface IAnalyticsSink {void Track(string e, int a, int b);} with a NullSink plus the profile log ring.\n- Events:\n  - session_start(day, daysSinceLast)\n  - ftue(step)\n  - run_start(startTitan, mode: 0 endless, 1 daily official, 2 daily practice, 3 checkpoint)\n  - titan_spawn(n, role)\n  - titan_defeat(n, seconds)\n  - run_end(n, reason)\n  - perf(p95ms, n)\n  - restart_ms(ms)\n- Debug export: F9 in the editor, or a 3-finger tap on the score, copies the log JSON to GUIUtility.systemCopyBuffer and shows the banner 'Jurnal copiat'. Gameplay events only; no device identifiers.\n\nSEEDED RUNS\n- TitanGame(TitanConfig, long runSeed, int startTitan = 1, int startScore = 0).\n- SpawnTitan(n) creates rng = new SeededRandom(SeededRandom.Derive(runSeed, n)) and uses it for Build, BuildDeck and every Draw during that titan.\n- Keep the old IRandom ctor for tests.\n\nCHECKPOINTS\n- On TitanSpawned with n > 1 and (n-1) % 5 == 0 (n = 6, 11, 16...): save Checkpoint {n, Score at that moment, runSeed}, Save(), and show the toast 'Punct de salvare: titanul #{n}' for 1.2 s.\n- Game-over panel buttons, in order:\n  - 'Joac\u0103 din nou': same start as this run; new seed if it started at 1; the checkpoint seed if it was a checkpoint run.\n  - 'Reia ciclul (titanul #{n})': only if a checkpoint exists. new TitanGame(cfg, savedSeed, n, savedScore).\n  - 'Joc nou': new random seed; the checkpoint is cleared.\n- APP LAUNCH, only when totalRuns >= 3 and a checkpoint exists: a minimal overlay with 'Continu\u0103 (titanul #{n})' (primary, default focus) and 'Joc nou'. Otherwise start the game immediately.\n- Copy says 'acela\u0219i titan' (never 'identic').",
+   "acceptance_criteria": [
+    "Core test: the same runSeed and the same scripted tap sequence give an identical Score and Level after 120 s simulated.",
+    "Core test: a checkpoint is saved exactly at n = 6, 11, 16 and never at other n.",
+    "Core test: restarting from a checkpoint reproduces titan n's cube layout exactly (cube-by-cube equality).",
+    "Core test: the score restored from a checkpoint equals the snapshot (no farming).",
+    "Core tests: DayClock rollback (clock moved back 3 days gives no new day); the ring buffer caps at 300; migration from a legacy best value.",
+    "Killing the editor play session mid-write leaves a loadable profile (temp-file path test in an editor test, or a manual check documented).",
+    "No checkpoint path references any ad API (code review plus a grep test)."
+   ],
+   "config": "CheckpointEvery=5 (cycle starts n=6,11,16...); LaunchOverlayMinRuns=3; LogRingSize=300; profile file titan_profile.json; PlayerPrefs mirror titan_profile_v1."
+  },
+  {
+   "id": "RET-2",
+   "title": "Record chase + honest near-miss game over + sub-second restart",
+   "priority": 11,
+   "area": "both",
+   "spec": "IN-RUN HUD\n- When best > 0 and 0.8*best <= Score < best: show 'Record \u00een {best-Score:N0}' in gold under the score, with the score pulsing at 1 Hz (static under reduced effects).\n- The first frame Score > best: banner 'RECORD NOU!' for 1.5 s, fanfare at 0.6 volume and a 40-particle confetti burst from the score. Fire once per run and set newBest = true.\n- When Level > profile.bestTitanN for the first time this run: banner 'TITAN NOU: #{Level}'.\n\nGAME-OVER PANEL, top to bottom:\n1. Reason line (incl. Deadlock).\n2. Score.\n3. One of: 'RECORD NOU!' if newBest; else if Score >= 0.85*best, 'Ai fost la {floor(100*Score/best)}% din record!'; else 'Record: {best}'.\n4. 'Titani: {n} \u00b7 Stele: {s} \u00b7 Buc\u0103\u021bi rupte: {p}'.\n5. One next-goal line, first match wins:\n   a) the next checkpoint is 1 titan away: '\u00cenc\u0103 un titan p\u00e2n\u0103 la punctul de salvare #{n}'\n   b) the Daily is not done today (after RET-3): 'Titanul Zilei te a\u0219teapt\u0103'\n   c) otherwise: 'Cel mai departe: titanul #{bestTitanN}'\n6. Buttons from RET-1, with 'Joac\u0103 din nou' primary: 60% panel width, 100*s height.\nTrue numbers only; never invent 'almost' states.\n\nFAST RESTART: ArenaView.Reset(TitanGame g).\n- StopAllCoroutines.\n- Destroy the monster root, fallen pieces and pooled-in-flight projectiles (return them to the pool).\n- Keep the camera, wall, slots, materials, tray root and textures.\n- Rebuild only the titan and the tray.\n- NewGame calls Reset instead of Destroy+Build.\n- Measure tap-to-first-frame and log restart_ms.\n\nInterstitial interaction (enforced in ADS-1): no interstitial on a game over that set a new record or a new furthest titan.",
+   "acceptance_criteria": [
+    "The near-miss line appears only when Score >= 0.85*best (unit test on a pure function NearMissText(score, best)).",
+    "The 'RECORD NOU!' banner fires at most once per run.",
+    "Restart tap to first frame of the new run < 300 ms in the editor on a level-8 arena (logged restart_ms), with no leaked GameObjects (object count after 10 restarts equals the count after 1, \u00b15).",
+    "No coroutine from the previous run fires after Reset (editor play-mode check)."
+   ],
+   "config": "NearMissDisplayThreshold=0.85; PbMarkerThreshold=0.8."
+  },
+  {
+   "id": "RET-3",
+   "title": "Titanul Zilei (slim): date-seeded 3-titan daily, one official attempt, share text, forgiving streak with shields",
+   "priority": 12,
+   "area": "both",
+   "spec": "MODE\n- TitanGame gets maxTitans; defeating titan #maxTitans ends the run with a new LoseReason.Completed (shown as a win).\n- Daily = 3 titans with build levels {3, 4, 5}; titan 3 has Role Boss. The clock uses n = 6, 7, 8 for the speedup exponent. All other config equals endless v2.\n\nSEED\n- daySeed = SeededRandom.FromString(\"titan-daily-v1:\" + dayNumber) + salt.\n- Titan k uses Derive(daySeed, k).\n- LOCAL day (DayClock).\n\nFAIRNESS\n- Core DailyValidator.PickSalt(day): for salt 0..3, run 40 Greedy-bot sims (fixed dt 0.05, tap 1.0\u00b10.4 s, jitter from SeededRandom(daySeed+i)).\n- Accept the first salt where clear-all >= 35% and titan 1 >= 90%; otherwise use salt 0 with levels {2, 3, 4}.\n- Cache it in profile.daily.salt.\n- Deterministic, so every device gets the same result.\n\nATTEMPTS\n- Game-over panel and launch overlay button: 'Titanul Zilei'. Status: ne\u00eencercat / 2/3 / 3/3, plus a real countdown to local midnight.\n- The official attempt starts at the first Deploy; opening and backing out does not consume it.\n- Progress is saved at every TitanDefeated (titan index plus score).\n- If the app is killed or backgrounded, the next launch offers 'Continu\u0103 \u00eencercarea oficial\u0103' from the last defeated titan.\n- It finalizes only on an explicit quit (confirm '\u00cenchei \u00eencercarea oficial\u0103?') or at local midnight.\n- After that: unlimited 'ANTRENAMENT' attempts, recorded only as bestPracticeScore.\n- AdGovernor context isDailyRanked = true. NO offers, NO helpers, NO interstitial before, during or after. Intro line: '\u00cencercarea de azi e f\u0103r\u0103 ajutoare \u0219i f\u0103r\u0103 reclame \u2014 aceea\u0219i provocare pentru to\u021bi.'\n\nRESULT PANEL\n- 'Titanul Zilei #{day}'.\n- 3 drawn squares: green = defeated, red = the titan you lost on, grey = not reached.\n- Score, m:ss, pieces cut.\n- 'Copiaz\u0103 rezultatul' puts this text in GUIUtility.systemCopyBuffer:\n  - line 1: 'Titanul din Cuburi \u00b7 Ziua #{day}'\n  - line 2: three emoji U+1F7E9 / U+1F7E5 / U+2B1C\n  - line 3: 'Scor {score:N0} \u00b7 {m:ss} \u00b7 {pieces} buc\u0103\u021bi rupte'\n  - line 4: the store link from config\n  - Banner 'Copiat! Lipe\u0219te-l unde vrei.'\n- Spoiler-free: no board info.\n\nSTREAK (append to Profile)\nStreakState {current, best, lastDay, shields, firstDailyDone}.\n- On official finalization on day D with lastDay < D: current += 1; lastDay = D; best = max.\n- The first ever daily grants 1 shield; every current % 7 == 0 grants +1; maximum 2.\n- Launch resolution, before any UI: gap = today - lastDay - 1.\n  - gap <= 0: nothing.\n  - gap <= shields: spend them; show 'Un scut \u021bi-a p\u0103strat seria.'\n  - else: current = 0; show 'Bine ai revenit! \u00cencepe o serie nou\u0103 azi.' The old number is never shown; 'Cea mai lung\u0103 serie: {best}' stays on the daily panel.\n- No loss-framed copy ('vei pierde' banned).\n- No buy-back after a miss.\n- No reminders in v1.\n- Streak shown only on the daily panel and the launch overlay, not on the endless game-over panel.\n\nTELEMETRY: daily_start, daily_end(day, titans), streak(new, old), shield_used(gap), share_tap.",
+   "acceptance_criteria": [
+    "Core test: for days 0..730, PickSalt returns a salt in 0..3 that meets clear >= 35% and titan 1 >= 90% (or the documented fallback), and total runtime on desktop is < 2 s for 30 random days.",
+    "Core test: two independent PickSalt calls for the same day return the same salt and an identical titan 1 layout.",
+    "Core test: the AdGovernor refuses every placement and the interstitial when isDailyRanked (coordinate with ADS-1; until then, a stub test on the context flag).",
+    "Core tests for streak: shields cover a 1-day gap, a 2-day gap with 2 shields, and a 3-day gap resets; the cap of 2 holds; resolution is idempotent if run twice the same day.",
+    "Simulated app kill mid-attempt: on reload the attempt resumes from the last defeated titan with the same seed and score.",
+    "Share text matches the exact 4-line format (golden-string test)."
+   ],
+   "config": "DailyBuildLevels={3,4,5}; DailyClockN={6,7,8}; DailyMinClearRate=0.35; DailyMinTitan1Rate=0.90; DailyMaxSalt=3; StreakMaxShields=2; StreakShieldEvery=7; storeLinkPlaceholder in config."
+  },
+  {
+   "id": "ADS-1",
+   "title": "Ad foundation: IAdService + SimulatedAdService + pure-C# AdGovernor + between-run interstitial policy + Ad Break Pass + cohorts/kill switches + ethics-lock tests",
+   "priority": 13,
+   "area": "both",
+   "spec": "CORE (Core/Ads; pure C#)\n- AdConfig: public fields; defaults below; overrides from a JSON string passed in by Game, read from Resources/ad_config.json if present.\n- AdState: keys persisted through IStore.\n- AdGovernor(AdConfig, IClock, IStore).\n- enum Placement {ReviveSecondWind, ExtraSlot, AdBreak, InterRunEnd}. Only these ship.\n- OfferContext: lifetimeRuns, lifetimePlaySec, sessionIndex, runSeconds, isDailyRanked, revivesUsedThisRun, helpsUsedThisRun, helpUsedThisTitan, titanLevel, progressFraction, titansThisRun, salvageActive.\n- Methods: CanOffer(p, ctx, out reason); OnOfferShown; OnOfferDeclined; OnRewardGranted (sets lastRewardedUtc = now and playSinceInter = 0); ShouldShowInterstitial(InterContext, out skipReason); OnInterstitialShown; OnRunStarted; OnRunEnded(sec); OnSessionStarted; AddPlaySeconds(dt).\n- A session starts at launch, or on resume after >= 1800 s in the background.\n- GLOBAL GATE: any offer or interstitial requires lifetimeRuns >= 3 AND lifetimePlaySec >= 600, and !isDailyRanked.\n- ONE-SURFACE RULE: Governor.ActiveSurface; at most one ad offer visible per screen. Priority: Revive > AdBreak proactive.\n\nINTERSTITIAL\nInterstitialGate.TryShow(ctx, onDone) is the single call site. Call it only when the player taps 'Joac\u0103 din nou', 'Reia ciclul' or 'Joc nou' on the results panel. Skip with the first failing reason (17 rules):\n1. inter_enabled\n2. sessionIndex >= 2\n3. lifetimeRuns >= grace_runs\n4. lifetimePlaySec >= 600\n5. not in an ad-break pass\n6. now - lastInter >= cooldown_s\n7. playSinceInter >= min_play_s\n8. now - lastRewarded >= 180\n9. runSeconds >= 45\n10. revive not declined at this game over\n11. gameoversThisSession >= 2\n12. session count < 5\n13. day count < 15\n14. results visible >= 1.5 s\n15. no new record or new furthest titan in this run\n16. not daily ranked\n17. ready within 1.0 s, else 'no_fill'\n\nPresets (inter_preset):\n- light (DEFAULT for soft launch): 240 / 210 / 8\n- standard: 180 / 150 / 5\n- firm: 150 / 120 / 4\nHard floors in CODE: cooldown >= 120 s, min_play >= 90 s, <= 3.5 interstitials per 10 min of play.\n\nWhen the governor will show an interstitial, the results button carries a small 'Reclam\u0103 \u00eenainte de rund\u0103' tag. Flow: 0.8 s card 'Reclam\u0103 \u2014 Mul\u021bumim c\u0103 sus\u021bii jocul gratuit.', ShowInterstitial, then start the requested run on any result.\n\nAD BREAK PASS\n- Grant: adfree_until = min(max(now, adfree_until) + 30 min, now + 60 min).\n- 4 per day. Hidden when the stack is full.\n- Surfaces:\n  - results-panel link and pause-menu item 'F\u0103r\u0103 reclame 30 min'; when active it shows 'F\u0103r\u0103 reclame \u00eenc\u0103 mm:ss' (non-interactive)\n  - proactive card once per local day, on the results panel after today's 2nd interstitial, only if no revive card was shown at this game over\n- Card: title 'PAUZ\u0102 DE RECLAME'; value 'Prive\u0219te o reclam\u0103 acum \u0219i ai 30 de minute f\u0103r\u0103 reclame \u00eentre runde. Reclamele op\u021bionale (cu recompens\u0103) r\u0103m\u00e2n la alegerea ta.'; buttons [Prive\u0219te reclama] [Nu, mul\u021bumesc].\n- Expiry: one plain line 'Pauza de reclame s-a \u00eencheiat.' on the next results screen.\n- The pass suppresses interstitials only.\n\nGAME (Game/Ads)\n- IAdService {IsRewardedReady; IsInterstitialReady; Preload(); ShowRewarded(placement, Action<AdResult>); ShowInterstitial(placement, Action<AdResult>); SetPrivacy(bool personalized, bool childDirected)}\n- AdResult {Completed, ClosedEarly, Failed, NotReady}. Grant ONLY on Completed, on the main thread.\n- SimulatedAdService:\n  - Full-screen IMGUI 'RECLAM\u0102 SIMULAT\u0102'. Rewarded 6 s, with close visible from the start; closing early asks 'Dac\u0103 \u00eenchizi acum nu prime\u0219ti recompensa.' [Continu\u0103 reclama] [\u00cenchide], and \u00cenchide gives ClosedEarly.\n  - Interstitial 4 s, close after 2 s.\n  - fill rate 0.9; static ForceFail flag.\n- Pause contract while an offer or ad is on screen: no Tick, no tray input, Time.timeScale = 0, AudioListener.pause = true, 70% dark overlay. Restore all of these in the callback.\n- AdOfferCard (shared IMGUI): small 'Reclam\u0103' tag top-left; title; one value line; two buttons of IDENTICAL size and style; drawn play-icon texture; no timers, no pre-checks, no X-means-accept.\n- Default SetPrivacy(false, true) (non-personalized, child-directed) until the age gate exists (deferred, required before store submission).\n\nCOHORTS (A10, cheap code)\n- install_id GUID, bucket = stable FNV hash % 100.\n- bucket 0-9: inter_enabled = false forever (holdout).\n- bucket 10-14: extra_slot_enabled = false.\n- Per-placement <name>_enabled kill switches.\n- bucket and experiments string on every logged ad event.\n\nANALYTICS (into the RET-1 sink): ad_offer_eligible{reason}, ad_offer_shown, ad_offer_accepted, ad_offer_declined, ad_show_result{result}, ad_reward_granted, ad_fallback_grant, ad_inter_eligible, ad_inter_skipped{skip_reason}, ad_inter_shown, ad_inter_closed{seconds}, app_background_after_ad (backgrounded <= 30 s after an ad closes). Each interstitial evaluation logs exactly one shown/skipped event.\n\nETHICS-LOCK TESTS (Tools/CoreTests/EthicsLockTests.cs)\n- TitanConfig.VisibleColorBias == 0.65 by default (comment: ethics lock).\n- TitanGame behaves identically (same events for the same seed and taps) whatever the AdState contents; the core has no reference to ads (the Core assembly has no Ads dependency in TitanGame).\n- OnOfferDeclined never causes ShouldShowInterstitial to be true for that game over.\n- The governor never returns an offer for isDailyRanked.\n- The FTUE gate blocks everything below 3 runs or 600 s.\n- The floors cannot be configured lower than the code minimums.",
+   "acceptance_criteria": [
+    "One NUnit test per interstitial rule (17), using a FakeClock and FakeStore, each asserting the exact skipReason.",
+    "Test: 20 simulated consecutive 40-s runs yield 0 interstitials; a simulated 30-min session of 3-min runs under 'light' yields <= 6, and under any preset never more than 3.5 per 10 min of play.",
+    "Tests: ad-break pass stacking to a maximum of 60 min, 4/day cap, proactive card at most once per local day, interstitials suppressed while the pass is active.",
+    "EthicsLockTests pass.",
+    "With ForceFail = true, no flow leaves the game paused or the player stuck; every card closes with the game resumed.",
+    "Editor: the offer card's accept and decline buttons have identical Rect sizes (debug assertion).",
+    "Buckets 0-9 never show an interstitial (unit test over the bucket mapping)."
+   ],
+   "config": "AdConfig: inter_enabled=true; inter_preset='light' (light 240/210/8, standard 180/150/5, firm 150/120/4); code floors cooldown>=120, min_play>=90, max 3.5 per 10 min; inter_min_run_s=45; inter_after_rewarded_s=180; inter_max_per_session=5; inter_max_per_day=15; inter_min_lifetime_play_s=600; session_timeout_s=1800; adbreak_enabled=true; adbreak_minutes=30; adbreak_max_stack_minutes=60; adbreak_max_per_day=4; adbreak_proactive_after_inter=2; min_lifetime_runs_any_ad=3; min_lifetime_play_s_any_ad=600; holdout buckets 0-9 (no interstitials) and 10-14 (no extra slot); banner_enabled=false; sim_rewarded_seconds=6; sim_inter_seconds=4; sim_fill_rate=0.9."
+  },
+  {
+   "id": "ADS-2",
+   "title": "Rescue placements: 'A doua suflare' once-per-run revive + '+1 Loc' wall-button extra slot",
+   "priority": 14,
+   "area": "both",
+   "spec": "SHIP GATE: both placements return CanOffer false unless ctx.salvageActive (CORE-1). A test asserts this, so we never sell relief from the dead-ammo bug.\n\nA) REVIVE 'A doua suflare'\n\nCore: TitanGame.Revive(float pushBackFraction, float graceSeconds), valid only when IsOver and Lost is Wall, SlotsFull or Deadlock:\n1. Lost = None.\n2. Every line cannon with no visible color goes back into the deck at an rng index if its color still has cubes; otherwise it is dropped. Line[s] = null.\n3. Distance = min(StartDistance, Distance + pushBackFraction*StartDistance).\n4. stepTimer = -graceSeconds.\n5. If every non-null tray cannon has no visible color, return them to the deck and redraw the 3 with bias 1.0 (fall back to random when no visible-color cannon is in the deck).\n6. stuckTimer = 0.\n7. Emit EventKind.Revived.\nThe ammo invariant is preserved.\n\nEligibility (Governor):\n- revive_enabled, the global gate and !isDailyRanked\n- revivesUsedThisRun < 1\n- titansThisRun >= 1 OR progressFraction (cubes destroyed / spawn cubes on the current titan) >= 0.15\n- offered only as the first thing after the loss\n\nFlow:\n1. 0.6 s freeze on the final frame with the loss banner.\n2. Offer card instead of the results panel.\n   - Title 'A DOUA SUFLARE'\n   - Stake line 'Titanul #{n} \u00b7 {pct}% distrus \u00b7 Scor {score}'. NO record-gap line.\n   - Value 'Tunurile adormite se \u00eentorc \u00een pachet, titanul d\u0103 \u00eenapoi \u0219i prime\u0219ti tunuri cu culori vizibile.'\n   - Buttons [Prive\u0219te reclama \u0219i continu\u0103] [Nu, mul\u021bumesc] (same size)\n   - Footer 'O singur\u0103 dat\u0103 pe rund\u0103.'\n3. First lifetime offer: the primary button reads 'Revino gratis' with no ad.\n4. Completed: Revive(); fade back in over 0.5 s; no countdown (the grace period covers it).\n5. ClosedEarly: back to the same card.\n6. Failed or NotReady: spinner for up to 3 s. Then, if fallback grants this session < 1, grant it free with the toast 'Reclama nu s-a \u00eenc\u0103rcat. \u00ce\u021bi d\u0103m revenirea oricum.' Otherwise show 'Nicio reclam\u0103 disponibil\u0103 acum' and disable accept.\n7. Decline: straight to results, with the declined-revive flag set for the interstitial gate.\n\nView: the titan stumbles back; sleeping cannons fly from the wall into the tray area and vanish into the deck.\n\nTelemetry: offer params loss_reason, pct_destroyed, titans_this_run; revive_outcome {titans_after, seconds_after, new_best}.\n\nTuning: in Tools/Sim add a --revive mode where the bot revives once at its first loss (helpers stay OFF for every balance metric; this mode is ONLY for measuring revive value). Choose push-back from {0.25, 0.40, 0.60} as the smallest value where Smart gains >= 1 titan in >= 50% of revives. Record it.\n\nB) EXTRA SLOT '+1 Loc'\n\nCore:\n- Line = new Cannon[LineSlots + 1]; public int ActiveSlots = LineSlots.\n- Every Line loop iterates 0..ActiveSlots-1.\n- GrantExtraSlot(): if ActiveSlots == LineSlots, then ActiveSlots++ and emit SlotAdded{Slot=5}.\n- SpawnTitan resets it.\n- SlotX(5) = 7.2, so existing cannons don't move.\n- WouldJam and the deadlock logic use ActiveSlots.\n\nTrigger:\n- ONLY a gold '+1 LOC' pill button (110x110 dp) on the wall, right of slot 5, in the top half, never overlapping tray hit rects, with a small 'Reclam\u0103' tag.\n- Shown when occupied >= 4 AND idle >= 3 has held continuously for 1.0 s; hidden after the condition has been false for 2 s.\n- One 0.3 s pulse on appear, then static.\n- A tray tap NEVER opens this card. The old tap_full trigger is not built.\n\nEligibility: titan >= 2; global gate; !isDailyRanked; not used on this titan; helpsUsedThisRun < 2; extra_slot_enabled; IsRewardedReady or first-free unused.\n\nCard:\n- Title '+1 LOC PE ZID'; value 'Un al 6-lea loc pentru tunuri, p\u00e2n\u0103 dobori acest titan.'\n- Buttons [Prive\u0219te reclama] [Nu acum]; footer 'Ajutoare r\u0103mase \u00een rund\u0103: {n}'.\n- First lifetime use: '\u00cencearc\u0103 gratis'.\n- Completed: GrantExtraSlot plus a gold flash.\n- Anything else: nothing changes.\n- Decline: button hidden for 20 s of game time; after 2 declines in a run, not shown again on the next titan.\n\nView: a 6th wall platform with gold trim at x = 7.2, folding away on the next TitanSpawned. ArenaView.Refit includes x = 7.2 + margin; verify at 9:19.5.\n\nShip check: if Tools/Sim (v2, helpers off) shows the trigger condition in < 5% of titans for Random, default extra_slot_enabled = false (code stays for the test).\n\nTelemetry: idle_on_line, occupied, slot6_used_shots at titan end.",
+   "acceptance_criteria": [
+    "Core tests: Revive keeps all titan cubes; returns idle cannons with live colors to the deck; drops none with live colors; preserves the ammo invariant; and leaves the game not in the deadlock state when the deck holds a visible-color cannon.",
+    "Core test: Revive is impossible twice in one run (the governor refuses).",
+    "Core tests: GrantExtraSlot works once per titan, resets on spawn, and every Line loop respects ActiveSlots (deploy fills slot 5 only after the grant).",
+    "Test: CanOffer(ReviveSecondWind/ExtraSlot) is false when salvageActive is false.",
+    "Test: no code path from GameController.HandleTap (tray taps) opens an AdOfferCard (an interface seam asserting the card-open count stays 0 across blocked taps).",
+    "Test: declining the revive sets the flag that makes ShouldShowInterstitial return 'declined_revive'.",
+    "Tools/Sim --revive: the chosen push-back gives Smart >= 1 extra titan in >= 50% of revives; value recorded in AdConfig and DESIGN.md.",
+    "Editor at 9:19.5 and 9:16: the 6th slot and the +1 LOC button are fully on screen and do not overlap the tray."
+   ],
+   "config": "AdConfig: revive_enabled=true; revive_max_per_run=1; revive_push_back=0.40 (choose from 0.25/0.40/0.60 by sim); revive_grace_s=2.0; revive_min_progress=0.15; revive_load_wait_s=3; fallback_grants_per_session=1; first_free_revive=true; extra_slot_enabled=true (false if trigger in <5% of titans); extra_slot_debounce_s=1.0; extra_slot_decline_cooldown_s=20; inrun_help_max_per_run=2; first_free_extra_slot=true. TitanGame: Line array sized LineSlots+1, ActiveSlots."
+  }
+ ],
+ "later": [
+  "C8b finisher collapse (titan crumbles below 8%), only after a FINISH=1 harness check and a performance check (at most ~150 rigidbodies; the rest as combined chunks)",
+  "C9 body plans: first FourArm or Horned debuting on the boss at titan 10. Armored cubes and twin cannons follow, each with its own harness pass, tuned with helpers off and accepted only if the slot-loss share rises by no more than 5 points",
+  "R7 rank and cosmetics, slim: about 6-20 wall and sky unlocks, never changing cube albedo. Pacing sized for players who never watch ads; ad-derived XP at most 10% of a typical day",
+  "R4 extras: monthly calendar page, monthly medals, streak milestone cosmetics",
+  "R3 extras: 14-day archive of missed dailies, difficulty tiers by weekday",
+  "R9 weekly challenge with config-only modifiers ('Tunuri Grele', 'Titani Gr\u0103bi\u021bi'); medals count only runs without a revive",
+  "R10 hub ('Tab\u0103ra') once 3 or more daily systems exist; at most one ad surface and 3 cards",
+  "R5 trophy hall of severed heads, keyed by body plan x size band x boss, not by color",
+  "A9 daily-layer ads: x2 daily reward (once a day, base reward always granted); proactive streak-shield refill only while the streak is intact, at most once per 7 days, off for under-16 and unknown ages",
+  "A4 as a FREE once-per-titan 'Schimb\u0103 tava', only if the harness shows an all-hidden tray in at least 5% of decisions after loop v2",
+  "A6 x2 run XP, only if R7 ships, capped at 3 per day",
+  "LevelPlay integration on an isolated spike branch, verified on device",
+  "Neutral age gate at first game over, 'Raporteaz\u0103 o reclam\u0103' mailto, CMP consent. Required before store submission",
+  "Mid-run persistence (save the in-progress endless run on background or kill)",
+  "Local notifications (needs a package): opt-in after the 3rd daily, one a day at most, off by default for minors",
+  "More languages (ES, PT, DE, FR), plus a bundled font if diacritics fail on device",
+  "Creative capture mode (deterministic replay of big cuts and boss kills) and a cheap CPI or creative test before heavy meta",
+  "Full color ledger (6 chips), only if playtests show hidden-color confusion",
+  "Banner test, results screen only, after month 2 and only if D7 is stable",
+  "Remote config and analytics backend, so the A10 experiments run remotely"
+ ],
+ "killed": [
+  {
+   "title": "A5 'Porne\u0219te de la Titanul N' paid with an ad (with score credit)",
+   "reason": "It sells a way out of tedium the game itself creates, and it lets players buy score with ads, which pollutes personal bests. Free checkpoints at cycle starts (RET-1) cover the need."
+  },
+  {
+   "title": "Interstitial at the BOSS break (from C6)",
+   "reason": "Titans chain continuously, so an ad there interrupts a run in progress. Nothing ad-related ever happens between titans."
+  },
+  {
+   "title": "A3 'tap_full' trigger (a tray tap on a full line opens the +1 Loc ad card)",
+   "reason": "It turns a gameplay tap into an ad funnel and collides with the last-slot guard. The only entry point is the explicit wall button."
+  },
+  {
+   "title": "Record-gap line ('E\u0219ti la X puncte de record!') on the revive card",
+   "reason": "It is loss-aversion pressure placed at the moment of sale. The fact belongs on the results screen (RET-2), not on the ad card."
+  },
+  {
+   "title": "Banners (in gameplay or menus) at launch",
+   "reason": "About 1/10 of rewarded eCPM, and a high accidental-tap risk next to the bottom tray. At most a later results-screen-only test."
+  },
+  {
+   "title": "A6 'x2 run XP' for now",
+   "reason": "There is no persistent meta sink yet. Doubling the score is worthless and would erode trust. At 15 a day it would also let ad-watchers out-progress everyone else."
+  },
+  {
+   "title": "A4 'Tunuri proaspete' as a rewarded ad",
+   "reason": "After the salvage, conveyor and no-triple fixes the state is rare, it races the deadlock timer, and it would sell relief from our own random draw. If it returns, it returns as a free action."
+  },
+  {
+   "title": "R6 'Lan\u021b Perfect' second multiplier chain",
+   "reason": "It stacks on top of the near-miss, boss, clean and chain multipliers and makes the score unreadable. The feats are folded into CORE-5 as a grade with no extra multiplier."
+  },
+  {
+   "title": "R5 108-species bestiary keyed on torso x head color, with a 35% color nudge",
+   "reason": "It collects palette swaps with no mechanical meaning, costs a lot (L complexity, hundreds of voxel heads) and is grindy."
+  },
+  {
+   "title": "R2 as a separate onboarding system (harness-searched FTUE seeds, run-1 bias 0.9)",
+   "reason": "It is fragile because draws depend on tap timing, and it duplicates C10. The useful parts are merged into FTUE-1."
+  },
+  {
+   "title": "R8 gates at titans 4/7/10",
+   "reason": "They are tied to the old monotonic build levels and duplicate checkpoints. Superseded by free checkpoints at cycle starts."
+  },
+  {
+   "title": "R10 hub as a v1 feature",
+   "reason": "It depends on deferred systems, adds friction before play and becomes an ad-offer pile-up. The results panel plus the launch overlay serve as the hub for v1."
+  },
+  {
+   "title": "Finalizing the official daily attempt when the app is killed",
+   "reason": "It punishes phone calls and OS kills. The attempt resumes from the last defeated titan instead."
+  },
+  {
+   "title": "Pixel Flow-style streak-loss offer (losing a 10x streak with an offer on the fail screen) and any streak buy-back after a miss",
+   "reason": "It is a loss-aversion dark pattern, against our ethics line and the EU DSA/DFA direction."
+  },
+  {
+   "title": "Any difficulty, draw or director logic that reads ad history, or lowering VisibleColorBias to sell help",
+   "reason": "It is the core ethics line. Bias is locked at 0.65 by a test, and all tuning is done with ad helpers off."
+  },
+  {
+   "title": "The darker 'glove' tint on hand cubes",
+   "reason": "A luminance shift of one palette color can be read as another color. It is replaced by a shape cue (inset cube and edges)."
+  }
+ ],
+ "kpi_targets": [
+  "D1 >= 40% (floor 30%, below which the core loop is reworked before any meta work)",
+  "D7 >= 15% (floor 10%)",
+  "D30 >= 6% (floor 4%)",
+  "New players defeating titan 1 on run 1 >= 90%; first piece falls at a median <= 10 s; each FTUE funnel step completed >= 85%",
+  "Sessions per DAU >= 4; playtime per DAU 12-20 min; runs per session >= 3",
+  "Restart from tap to play < 1 s (p95 < 300 ms on a 2022 mid-range Android)",
+  "Revive opt-in 45-60% of offers shown (floor 30%); revive_outcome shows >= 1 extra titan in >= 50% of revives",
+  "+1 Loc opt-in 25-40% (floor 20%)",
+  "Ad Break Pass used by 5-12% of DAU per day; proactive card opt-in 20-35%",
+  "Share of DAU with >= 1 rewarded view >= 55%; rewarded views per DAU 2-4; interstitials per DAU 2-4, never above 3.5 per 10 min of play",
+  "Interstitial cohort vs the permanent 10% holdout: D1 delta >= -1.5 pp and D7 delta >= -1.0 pp, otherwise auto-step to a lighter preset",
+  "app_background_after_ad < 8% of interstitials",
+  "Titanul Zilei played by >= 40% of DAU; share taps >= 8% of official completions; 3+ day streak holders >= 20% of DAU by week 3",
+  "Checkpoint 'Continu\u0103' used in >= 50% of launches where a checkpoint exists",
+  "Store rating >= 4.5; ad-related complaints < 10% of 1-star reviews",
+  "Crash-free sessions >= 99.5%; p95 frame <= 33 ms on a level-8 boss"
+ ],
+ "balance_targets": [
+  "All targets are measured with Tools/Sim bots (Random/Greedy/Smart, tap every 0.6-1.6 s, dt 0.05, 300 games each) with every ad helper OFF (ethics lock, enforced in CI)",
+  "Titan-1 loss: Random < 2%, Smart < 1% (current loop v2 measurement: 6% / 1%)",
+  "Runs ending < 20 s: Random <= 1%, Smart 0%; Random runs < 30 s <= 3% (measured 7% / 2% and 9%)",
+  "Smart:Random mean titans defeated between 1.7x and 2.3x (baseline 1.18x; loop v2 measured 1.74x)",
+  "Loss mix: Random wall share 35-55%, Smart 40-70% (measured 71% / 90%, so the approach per cube must be retuned in CORE-3)",
+  "Per-titan median clear time 10-40 s for titans 1-16; sprint <= 16 s; boss <= 40 s",
+  "Median run length: Random 120-200 s, Smart 240-420 s; Smart reaches the 30-min cap in < 2% of games",
+  "Dead (color-gone) cannons on the line: 0.00 per game (invariant)",
+  "Decision points with >= 2 visible-color options >= 65% (Smart); zero-choice decision points <= 25%; play time with the line full <= 25%",
+  "Median distance margin when a titan dies 0.25-0.45; time at danger >= 75% between 4% and 10% of play",
+  "Pieces attributed to joint shots >= 65%; pieces per titan 2.5-3.5",
+  "Clean cuts per titan: Smart >= 1.5x Random; 'Linie curat\u0103' star earned by Smart on 25-40% of titans without raising the wall-loss share by more than 5 points",
+  "Self-inflicted instant SlotsFull losses (own 5th idle tap) = 0% after the guard; max continuous stuck time <= 1.55 s",
+  "Scripted titan 1: >= 3 pieces within 4 s of the first deploy; Random defeats titan 1 in >= 99% of runs",
+  "Daily: every day 0-730 has a salt in 0..3 where the Greedy bot clears all 3 titans in >= 35% of sims and titan 1 in >= 90%",
+  "Revive value (measurement mode only): the chosen push-back gives Smart >= 1 extra titan in >= 50% of revives",
+  "Interstitial governor: 20 consecutive 40-s runs give 0 interstitials; a 30-min session of 3-min runs gives <= 6 under 'light'; never > 3.5 per 10 min"
+ ],
+ "doc_path": "/home/user/newgame/docs/DESIGN.md"
+}
