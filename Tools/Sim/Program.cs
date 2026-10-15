@@ -108,13 +108,13 @@ namespace Titan.Sim
             return args[++i];
         }
 
-        /// <summary>Titan composition per level, averaged over 200 seeds.</summary>
+        /// <summary>Titan composition per titan number n (built at the cycle level when UseCycles), averaged over 200 seeds.</summary>
         static void Static(TitanConfig cfg)
         {
-            Console.WriteLine("=== titan composition per level (200 seeds each) ===");
-            Console.WriteLine("lvl cubes colors approach(s) shots/s-needed limbs% visible%@spawn hiddenOnlyColors joints cannons");
+            Console.WriteLine("=== titan composition per titan number n (200 seeds each) ===");
+            Console.WriteLine("  n role   L cubes colors approach(s) shots/s-needed limbs% visible%@spawn hiddenOnlyColors joints cannons");
             const int N = 200;
-            for (int lvl = 1; lvl <= 12; lvl++)
+            for (int lvl = 1; lvl <= 25; lvl++)
             {
                 double cubes = 0, colors = 0, appr = 0, limbs = 0, visible = 0, hiddenOnly = 0, joints = 0, cannons = 0;
                 for (int s = 0; s < N; s++)
@@ -132,8 +132,8 @@ namespace Titan.Sim
                     joints += m.Joints.Count();
                     cannons += g.DeckCount + g.Tray.Count(c => c != null);
                 }
-                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0,3} {1,5:F0} {2,6:F1} {3,11:F0} {4,14:F2} {5,6:F0} {6,16:F0} {7,16:F2} {8,6:F1} {9,7:F1}",
-                    lvl, cubes / N, colors / N, appr / N, cubes / appr, 100 * limbs / cubes, 100 * visible / cubes, hiddenOnly / N, joints / N, cannons / N));
+                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0,3} {10,-6} {11,1} {1,5:F0} {2,6:F1} {3,11:F0} {4,14:F2} {5,6:F0} {6,16:F0} {7,16:F2} {8,6:F1} {9,7:F1}",
+                    lvl, cubes / N, colors / N, appr / N, cubes / appr, 100 * limbs / cubes, 100 * visible / cubes, hiddenOnly / N, joints / N, cannons / N, cfg.RoleOf(lvl), cfg.BuildLevel(lvl)));
             }
         }
     }

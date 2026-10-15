@@ -1,6 +1,6 @@
 # Titanul din Cuburi
 
-Un titan uriaș făcut din cuburi colorate pășește spre zidul tău. Jos ai 3 tunuri; atingi unul și el urcă pe zid, apoi trage singur în cuburile de culoarea lui. Rupi brațe și capete, doborî titanul, și vine altul, mai mare. Infinit.
+Un titan uriaș făcut din cuburi colorate pășește spre zidul tău. Jos ai 3 tunuri; atingi unul și el urcă pe zid, apoi trage singur în cuburile de culoarea lui. Rupi brațe și capete, doborî titanul, și vine următorul, în cicluri de câte 5 (al 4-lea e un sprint, al 5-lea un titan gigant). Infinit.
 
 ## Cum îl deschizi
 
@@ -13,14 +13,17 @@ Control: atingi / dai click pe un tun de jos.
 
 ## Regulile
 
-1. **Titanul.** Pășește spre zid; ajunge la el în 60–70 s la primul titan. Bara de sus arată cât de aproape e.
-2. **Tunurile.** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când le-ai folosit pe toate 3, vin alte 3 (ca la Block Blast).
-3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri**. Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul.
-4. **Așteptarea și Recuperarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui. „zzz” înseamnă mereu că mai există cuburi de culoarea lui, ascunse în spate. Când cade o bucată, muniția care nu mai are ce lovi pleacă odată cu ea: un tun de pe zid a cărui culoare a dispărut de tot zboară de pe zid cu **„RECUPERAT +puncte”**; din tunurile din tavă se scade muniția în plus (un „-N” zboară din bucată spre tun și numărul scade sub ochii tăi; un tun ajuns la 0 dispare); din pachet se scade pe nevăzute. Pe zid nu rămâne niciodată un tun mort.
+1. **Titanul și ciclurile.** Titanul pășește spre zid; bara de sus arată cât de aproape e. Titanii vin în **cicluri de câte 5**: încălzire, construcție, împingere, **TITAN RAPID!** (un titan mic, eliberarea dinaintea vârfului) și **TITAN GIGANT!** (vârful ciclului, bonus ×2). Sus scrie „Ciclul c · Titanul #n”, cu 5 puncte (al 5-lea e o coroană) care se umplu pe măsură ce dobori titanii ciclului. Vezi tabelul de mai jos.
+2. **Tunurile (tava-bandă).** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când trimiți unul, un tun nou urcă imediat în locul lui. Tava nu primește niciodată 3 tunuri de aceeași culoare dacă mai există alte culori în pachet. Când pachetul titanului s-a golit, locul rămâne gol, cu un cerc închis și „pachet gol”.
+3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri**. Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul. Pe fața zidului, 5 pătrățele arată locurile: gol = doar contur, trage = culoarea tunului cu simbolul ei, așteaptă = gri cu „zzz”. Chenarul lor e alb, chihlimbar când 3 tunuri așteaptă, roșu pulsând la 4 sau mai multe.
+4. **Așteptarea și Recuperarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui. „zzz” înseamnă mereu că mai există cuburi de culoarea lui, ascunse în spate; câte culori sunt doar ascunse arată cipul „N culori ascunse ?” de sub bară. Când cade o bucată, muniția care nu mai are ce lovi pleacă odată cu ea: un tun de pe zid a cărui culoare a dispărut de tot zboară de pe zid cu **„RECUPERAT +puncte”**; din tunurile din tavă se scade muniția în plus (un „-N” zboară din bucată spre tun și numărul scade sub ochii tăi; un tun ajuns la 0 dispare și urcă altul în locul lui); din pachet se scade pe nevăzute. Pe zid nu rămâne niciodată un tun mort.
 5. **Tăieturile (combo).** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul sunt **încheieturile**: au culoarea lor și o dungă albă („cusătura”). Brațele și capul nu cad singure: tunul de culoarea brațului îl „mănâncă” de la mână spre umăr, fără să-l rupă. Bucata se rupe doar când distrugi încheietura (sau corpul de sub ea), cade cu fizică și toate cuburile din ea îți dau puncte. Mâna are culoarea brațului (o recunoști după rama închisă). Eticheta galbenă **TAIE!** apare deasupra unui tun din tavă doar dacă muniția **lui**, trimis acum, ajunge să rupă o bucată (jocul simulează țintirea pe o copie a titanului, deci eticheta nu minte). Dacă tunul singur nu ajunge, dar mai ai pe zid sau în tavă alt tun de aceeași culoare, apare un contur gol „taie în N” (N = câte lovituri de culoarea asta mai trebuie).
-6. **Pierzi** când titanul atinge zidul sau când toate cele 5 locuri sunt pline cu tunuri care n-au în ce trage.
+6. **Tăietura cumpără timp.** Fiecare bucată căzută împinge titanul înapoi cu 0,03 × cuburile ei (între 0,3 și 1,5 unități, niciodată mai departe de unde a pornit) și îi întârzie pasul următor cu 0,5 + 0,01 × cuburi secunde (cel mult 1 s). Titanul se clatină înapoi. Bucata care îl doboară de tot nu-l mai împinge.
+7. **„La mustață”.** Dacă dobori titanul când mai are sub 15% din drum până la zid, bonusul de doborâre se înmulțește cu 1,5: **„LA MUSTAȚĂ! x1.5”**. Când titanul a trecut de 75% din drum, marginea ecranului pulsează roșu și se aude o bătaie de inimă.
+8. **Paza ultimului loc.** Jocul refuză atingerea care ar pune pe ultimul loc liber un tun fără țintă, când niciun tun de pe zid nu trage (ai fi pierdut pe loc). Tunul se scutură și scrie **„Ar bloca ultimul loc! Alege o culoare vizibilă.”** O atingere refuzată nu deschide niciodată nimic altceva.
+9. **Pierzi** când titanul atinge zidul, când toate cele 5 locuri sunt pline cu tunuri care n-au în ce trage, sau la **„BLOCAT!”**: niciun tun de pe zid nu are țintă și nu ai nicio mutare utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu o culoare vizibilă) timp de 1,5 s.
 
-**Scor:** 10 puncte pe cub lovit, 25 pe fiecare cub dintr-o bucată ruptă, 5 pe fiecare lovitură recuperată (de pe zid sau din tavă), 200 × numărul titanului când îl dobori, plus 2 pe fiecare lovitură rămasă în tunuri.
+**Scor:** 10 puncte pe cub lovit, 25 pe fiecare cub dintr-o bucată ruptă, 5 pe fiecare lovitură recuperată (de pe zid sau din tavă), 200 × numărul titanului când îl dobori (×2 la titanul gigant, ×1,5 „la mustață”), plus 2 pe fiecare lovitură rămasă în tunuri pe zid (fără multiplicatori).
 
 ### Alegeri făcute pentru prototip
 
@@ -34,13 +37,24 @@ Control: atingi / dai click pe un tun de jos.
 
 ## Titanii
 
-| Titan | Cuburi | Culori | Timp până la zid |
-|---|---|---|---|
-| 1 | 142 | 3 | 61 s |
-| 2 | 160 | 3 | 62 s |
-| 3 | 206 | 4 | 69 s |
-| 4 | 477 | 4 | 124 s |
-| 7 | 996 | 6 | 201 s |
+Titanul #n e construit la un „nivel” L ales de ciclul de 5 (c = ciclul, de la 0): încălzire L = min(1+c, 5), construcție min(2+c, 6), împingere min(3+c, 6), **sprint** L1 (L2 din ciclul 3), **gigant** min(4+c, 8). Timpul până la zid = max(12 s, (4 + s/cub × cuburi) × max(0,6; 0,98^(n−1))), cu 0,11 s/cub la titanii 1–3 (ritm de învățare) și 0,075 s/cub după. Medii pe 200 de titani:
+
+| Titan | Rol | L | Cuburi | Culori | Timp până la zid |
+|---|---|---|---|---|---|
+| 1 | încălzire | 1 | 142 | 3 | 20 s |
+| 2 | construcție | 2 | 160 | 3 | 21 s |
+| 3 | împingere | 3 | 206 | 4 | 26 s |
+| 4 | **sprint** | 1 | 142 | 3 | 14 s |
+| 5 | **gigant** | 4 | 477 | 4 | 37 s |
+| 6 | încălzire | 2 | 160 | 3 | 14 s |
+| 8 | împingere | 4 | 477 | 4 | 35 s |
+| 9 | **sprint** | 1 | 142 | 3 | 12 s |
+| 10 | **gigant** | 5 | 516 | 5 | 36 s |
+| 15 | **gigant** | 6 | 561 | 5 | 35 s |
+| 20 | **gigant** | 7 | 996 | 5–6 | 54 s |
+| 25 | **gigant** | 8 | 996 | 5–6 | 48 s |
+
+Tabelul complet (n = 1–25): `dotnet run -c Release --project Tools/Sim -- --static --games 1`. Reculul de la tăieturi lungește timpul real.
 
 ## Simulare (echilibrul jocului)
 
@@ -51,7 +65,7 @@ dotnet run -c Release --project Tools/Sim -- --games 300 --preset current
 dotnet run -c Release --project Tools/Sim -- --games 300 --preset v2 --set ApproachSecondsPerCube=0.08
 ```
 
-Presetul `current` e `TitanConfig` așa cum e acum; `v2` e tabelul din `docs/DESIGN.md` 4.3 și se completează singur pe măsură ce regulile noi intră în cod (până atunci simulatorul scrie ce lipsește). `--set Cheie=Valoare` schimbă orice câmp din `TitanConfig`.
+Presetul `current` e `TitanConfig` așa cum e acum; `v2` e tabelul din `docs/DESIGN.md` 4.3 (azi identic cu `current`: valorile v2 sunt cele implicite din cod). `--set Cheie=Valoare` schimbă orice câmp din `TitanConfig`.
 
 Raportul are metricile din `docs/DESIGN.md`, secțiunea 12.1 (titani doborâți, durata rundei, de ce se pierde, timpi per titan, decizii, bucăți, tunuri moarte) și raportul Smart : Random. Țintele și cifrele de azi sunt în `docs/DESIGN.md` (secțiunile 3 și 12.1), nu aici, ca să nu rămână vechi.
 

@@ -86,7 +86,7 @@ Titanul pășește spre zid. Jos ai **3 tunuri** (culoare + muniție 10–30). A
 2. **Muniția pleacă odată cu bucata (Recuperare).** Când cade o bucată, muniția care nu mai are ce lovi se scoate: întâi din pachet (invizibil), apoi din tava (numărul de pe tun scade vizibil, cu un „-N” care zboară din bucată spre tun), iar un tun de pe zid a cărui culoare nu mai există zboară de pe zid cu **„RECUPERAT +puncte”**. **Invariant:** după fiecare pas, niciun tun de pe zid nu are o culoare dispărută, iar pentru fiecare culoare, muniția din pachet + tavă ≤ cuburile rămase.
 3. **Țintirea de la vârf spre încheietură.** Un tun trage în cubul vizibil de culoarea lui cel mai *depărtat* de corpul ancorat (apoi cel mai înalt, apoi cel mai apropiat de tun). Brațele și capul se „mănâncă” de la vârf spre încheietură și **nu cad singure**. O bucată cade doar când jucătorul trimite culoarea încheieturii (umăr sau gât). Mâna are culoarea brațului.
 4. **Tava ca o bandă.** Când trimiți un tun, un tun nou urcă imediat în locul lui. Tava nu primește niciodată 3 tunuri de aceeași culoare dacă pachetul are altă culoare. Tunul nou are o culoare vizibilă acum în 65% din cazuri (valoare blocată prin test — vezi Linia etică). Când pachetul se golește, locul rămâne gol cu eticheta „pachet gol”.
-5. **Ceasul titanului.** Timpul până la zid = max(12 s, (4 + 0,075 × cuburi) × max(0,6; 0,98^(n−1))), unde n = numărul titanului. Titanii 1–3 folosesc 0,11 s/cub (ritm de tutorial). *Valorile finale se reglează în sprint pentru țintele din 12.1.*
+5. **Ceasul titanului.** Timpul până la zid = max(12 s, (4 + 0,075 × cuburi) × max(0,6; 0,98^(n−1))), unde n = numărul titanului. Titanii 1–3 folosesc 0,11 s/cub (ritm de tutorial). *Reglat în simulator (itemul 4, vezi 4.3.2): valorile de mai sus rămân cele finale.*
 6. **Reculul la tăiere.** Fiecare bucată căzută împinge titanul înapoi cu clamp(0,03 × cuburi; 0,3; 1,5) unități și îi întârzie pasul următor cu min(1,0; 0,5 + 0,01 × cuburi) s. Tăietura cumpără timp — e a doua miză a deciziei de tăiere.
 7. **„La mustață”.** Dacă dobori titanul când mai are sub 15% din drum, bonusul de doborâre × 1,5 și mesajul **„LA MUSTAȚĂ! ×1,5”**.
 8. **Paza ultimului loc.** Jocul refuză o atingere care ar pune al 5-lea tun fără țintă pe zid (sigur ar pierde), cu mesajul **„Ar bloca ultimul loc! Alege o culoare vizibilă.”** Tunul din tavă se scutură. Nu se deschide niciodată o reclamă din această atingere.
@@ -95,7 +95,9 @@ Titanul pășește spre zid. Jos ai **3 tunuri** (culoare + muniție 10–30). A
 
 ### 4.3 Valorile de configurare (TitanConfig v2)
 
-| Parametru | Acum | v2 |
+Din itemul 4, coloana v2 e valoarea implicită din `TitanConfig` (presetul `v2` din simulator și `current` sunt identice). Coloana „Înainte” e bucla veche, păstrată pentru comparație.
+
+| Parametru | Înainte | v2 (în cod) |
 |---|---|---|
 | TraySize / LineSlots | 3 / 5 | 3 / 5 |
 | TrayRefill | Batch (toate 3) | **PerSlot** (Batch rămâne doar pentru teste A/B) |
@@ -109,7 +111,7 @@ Titanul pășește spre zid. Jos ai **3 tunuri** (culoare + muniție 10–30). A
 | Stun bază / per cub / max | — | 0,5 / 0,01 / 1,0 s |
 | NearMissFraction / NearMissBonusMult | — | 0,15 / 1,5 |
 | DeadlockSeconds | — | 1,5 |
-| UseCycles | — | true |
+| UseCycles / BossBonusMult / BossExtraColor | — | true / 2 / false |
 
 ### 4.3.1 Decizii luate la implementare (itemii 2 și 3: Recuperare, Tăieturi câștigate)
 
@@ -135,6 +137,50 @@ Titanul pășește spre zid. Jos ai **3 tunuri** (culoare + muniție 10–30). A
 | + Tăieturi câștigate (FarthestFirst, implicit) | 5,91 / 6,29 / 6,20 | 175 / 193 / 187 | 3,09–3,10 | 64–71% | 0% | 0,00 | 0,0% |
 
 Mâna = culoarea brațului e deja inclusă în rândul „+ Recuperare” (constructorul se schimbă o singură dată). Raportul Smart : Random a rămas 1,05×; pierderile sunt încă 100% „locuri pline”. Reglajul (ceasul, tava-bandă, ciclurile) e treaba itemului 4.
+
+### 4.3.2 Decizii luate la implementare (itemii 4 și 5: Bucla v2, Amenințare lizibilă)
+
+**Tava-bandă (4.2.4).**
+- `TrayRefill.PerSlot` (implicit): după o atingere, `Tray[i] = Draw(i)` și evenimentul `TrayRefilled` cu `TraySlot = i` (`-1` = toată tava: titan nou sau modul `Batch`, păstrat doar pentru teste și A/B). Un loc golit de Recuperare se reumple la fel, imediat.
+- La un titan nou, tava veche se golește *înainte* de tragere, ca regula „fără 3 de aceeași culoare” să nu se uite la tunurile titanului trecut.
+- „Fără triplete”: dacă celelalte două tunuri din tavă au culoarea X și tragerea normală (cu bias-ul de 65% neschimbat) dă tot X, se alege uniform un tun din pachet de altă culoare, dacă există. Testul compară 500 de trageri cu regula și fără ea (fără regulă apar triplete, deci testul poate pica).
+- Pachet gol → locul rămâne `null`; în vizual, un cerc închis din 16 blocuri și eticheta „pachet gol”.
+
+**Ceasul titanului (4.2.5–4.2.7).**
+- `ApproachSeconds(n, cuburi)` folosește **numărul** titanului n (pentru 0,98^(n−1) și pentru ritmul de tutorial) și cuburile titanului construit la nivelul din ciclu.
+- Reculul se aplică pentru fiecare bucată căzută, inclusiv întârzierea pasului (se adună dacă dintr-o lovitură cad două bucăți). **Excepție:** lovitura care golește titanul nu mai împinge (titanul e doborât oricum, iar „la mustață” se judecă după distanța de dinaintea ultimei lovituri). Evenimentul nou `Staggered` (Distance, Piece) vine după `PieceFell`.
+- „La mustață”: `Distance ≤ 0,15 × StartDistance` în momentul doborârii; bonusul = rotunjire(200 × n × (boss ? 2 : 1) × 1,5); muniția rămasă pe zid (2/lovitură) se adună după, fără multiplicator.
+- `TitanGame.NextStepIn` (secunde până la pasul următor) și `TitanGame.Danger` sunt publice (teste, HUD).
+
+**Ciclurile (5.1).** `TitanConfig.BuildLevel(n)` și `RoleOf(n)` (statice și ușor de testat: tabelul n = 1–30 e în teste). `TitanGame.Level` rămâne n; `TitanGame.BuildLevel` și `Role` sunt noi; `GameEvent.Role` vine pe `TitanSpawned` și `TitanDefeated`. `BossExtraColor` (oprit) dă bossului o culoare în plus prin `MonsterBuilder.Build(nivel, rng, extraColors)`; nevalidat în simulator. Constructorul `TitanGame` primește opțional o sursă de titani (`Func<int, Monster>`), folosită de teste și pregătită pentru titanul scenarizat din itemul 6.
+
+**Paza ultimului loc și „Blocat” (4.2.8–4.2.9).**
+- `DeployBlock(i)` întoarce `NotAvailable` (joc terminat, loc invalid sau gol), `LineFull`, `WouldJam` (exact 1 loc liber, niciun tun de pe zid cu culoare vizibilă, tunul atins fără culoare vizibilă) sau `None`; `CanDeploy` = `None`.
+- „Blocat” se verifică la sfârșitul lui `Tick`, după Recuperare și după verificarea „5 locuri pline” (care rămâne imediată). Pragul are o toleranță de 0,0001 s: suma în float a 30 de pași de 0,05 s nu trebuie să adauge un cadru (testul cere exact 1,5 s). `StuckSeconds` e public.
+- `VisibleCountByColor()` întoarce o copie, calculată o dată pe epoca titanului (cache în Core, pe lângă cache-ul pe cadru din HUD); `HiddenOnlyColorCount()` o folosește.
+- Roboții aleg doar tunuri pe care jocul le acceptă (`BotView.Tappable`): un jucător care primește „Ar bloca ultimul loc!” alege alt tun. Smart dă +60 unui tun cu eticheta TAIE! (informație pe care o vede și jucătorul).
+
+**HUD (abateri mici de la specificație).**
+- Pătratele locurilor stau **pe fața zidului**, sub fiecare loc, nu deasupra liniei zidului: deasupra ar acoperi tunurile de pe zid (criteriul cere să nu se suprapună). De verificat în editor la 360×640.
+- Cipul scrie la singular „1 culoare ascunsă ?” și la plural „{k} culori ascunse ?”.
+- „Efecte reduse” există deja ca `Settings.ReducedFx` (PlayerPrefs `set_reducedFx`), fără meniu: itemul 8 adaugă meniul. Cu el pornit: fără tremurat de cameră, marginea roșie și chenarul roșu al pătratelor sunt statice.
+- Simbolurile culorilor (cerc, pătrat, triunghi, romb, cruce, stea), punctele ciclului și coroana sunt texturi procedurale (`Game/HudArt.cs`), refolosibile de itemul 8.
+- Bannerele din evenimente (doborât, la mustață, rolul titanului nou) stau la coadă în spatele celui de pe ecran; mesajele unei atingeri refuzate apar imediat.
+
+**Reglajul (Tools/Sim, 300 de jocuri/robot, sămânța 1, Random și Smart).** Căutarea cerută (ApproachSecondsPerCube 0,075–0,095 × ApproachSpeedup 0,98/0,985; TutorialSecondsPerCube 0,10–0,14) cu reculul neschimbat:
+
+| s/cub | Speedup | Titani R / S | Raport | Rundă mediană R / S | Zid R / S | Zid plin R / S |
+|---|---|---|---|---|---|---|
+| **0,075** | **0,98** | **9,5 / 16,8** | **1,77×** | **194 / 345 s** | **96% / 99%** | **26% / 31%** |
+| 0,075 | 0,985 | 11,0 / 20,4 | 1,85× | 228 / 484 s | 93% / 99% | 28% / 32% |
+| 0,085 | 0,98 | 13,0 / 22,7 | 1,75× | 297 / 542 s | 89% / 99% | 29% / 33% |
+| 0,085 | 0,985 | 14,8 / 27,5 | 1,86× | 357 / 710 s | 87% / 99% | 31% / 34% |
+| 0,095 | 0,98 | 15,8 / 29,8 | 1,89× | 395 / 694 s | 85% / 99% | 31% / 34% |
+| 0,095 | 0,985 | 18,4 / 36,6 | 1,99× | 448 / 973 s | 82% / 98% | 32% / 35% |
+
+(Rândurile non-alese sunt măsurate înainte ca Smart să folosească TAIE!, care îi adaugă ~0,4 titani; tendințele nu se schimbă.) TutorialSecondsPerCube între 0,10 și 0,14 nu schimbă nimic măsurabil (titanii 1–3 nu se pierd niciodată), deci rămâne 0,11. **Ales: 0,075 / 0,98 / 0,11**, singura combinație cu ambele runde mediane în țintă; restul țintelor sunt în 12.1. Sămânțele 2 și 3 dau același tablou (raport 1,78× / 1,75×, Random 203 / 204 s, Smart 377 / 350 s).
+
+**Ținta „cota pierderilor la zid” (Random 35–55%, Smart 40–70%) nu se poate atinge cu regulile din itemii 2 și 5.** Ea a fost fixată pe out_C1, unde 29% din rundele Random se terminau cu „locuri pline”, 65% din ele prin atingerea proprie a celui de-al 5-lea tun fără țintă, plus tunuri moarte rămase pe zid. Recuperarea (itemul 2) a scos tunurile moarte, iar paza ultimului loc (itemul 5) face imposibilă pierderea prin atingerea proprie. Măsurat cu aceeași configurație și paza scoasă temporar: Random 72% zid / 28% locuri pline (87% din ele prin atingerea proprie), raport 1,89×; cu paza: 96% / 4%, raport 1,77×. „Blocat” nu apare niciodată la roboți (0% din pierderi, timp blocat maxim 0,00 s): starea cere 4 tunuri care așteaptă, nimic care trage și o tavă fără nicio culoare vizibilă, iar bias-ul de 65% o face foarte rară. Nicio valoare din intervalele permise nu coboară zidul sub ~82%. **Propunere pentru proprietar:** ținta devine „pierderile vin din zid (≥ 80%), iar «locuri pline» + «blocat» rămân posibile (≥ 1% la Random)”; până la decizie, CI verifică doar limitele de jos (vezi 12.1). Tot aici: „timp cu zidul plin” e 26% (Random) / 35% (Greedy) / 31% (Smart) față de ținta ≤ 25%; e o măsură a stilului roboților (Smart cu „păstrează locuri libere” a căzut la 0,91× Random), nu a regulilor, așa că n-am forțat-o.
 
 ### 4.4 Ce simte jucătorul, într-un titan
 
@@ -359,25 +405,27 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 
 ### 12.1 Ținte pentru simulator (robot, ajutoare oprite)
 
-| Măsură | Țintă | Măsurat azi (bucla v2 completă, out_C1) |
-|---|---|---|
-| Pierdere la titanul 1 | Random < 2%, Smart < 1% | 6% / 1% |
-| Runde < 20 s | Random ≤ 1%, Smart 0% | 7% / 2% |
-| Runde < 30 s (Random) | ≤ 3% | 9% |
-| Raport titani Smart : Random | 1,7–2,3× | 1,74× |
-| Cota pierderilor la zid (Random) | 35–55% | 71% |
-| Cota pierderilor la zid (Smart) | 40–70% | 90% |
-| Timp per titan (median), titanii 1–16 | 10–40 s; sprint ≤ 16 s; boss ≤ 40 s | 12–37 s |
-| Rundă mediană | Random 120–200 s; Smart 240–420 s | 164 s / 283 s |
-| Smart atinge limita de 30 min | < 2% | — |
-| Tunuri moarte pe zid | 0 (invariant) | 0,00 |
-| Decizii cu ≥ 2 opțiuni vizibile (Smart) | ≥ 65% | 77% |
-| Decizii fără alegere | ≤ 25% | 16–20% |
-| Timp cu zidul plin | ≤ 25% | 26–32% |
-| Marja la doborâre (mediană) | 0,25–0,45 | 0,21–0,47 |
-| Timp în pericol ≥ 75% | 4–10% | 5–6% |
-| Bucăți din lovituri pe încheietură | ≥ 65% | 76–82% |
-| Bucăți per titan | 2,5–3,5 | ~3 |
+| Măsură | Țintă | Harness (out_C1) | Măsurat azi (itemii 1–5 în cod, Tools/Sim, 300 jocuri/robot, sămânța 1; R / G / S) |
+|---|---|---|---|
+| Pierdere la titanul 1 | Random < 2%, Smart < 1% | 6% / 1% | 0% / 0% / 0% ✔ |
+| Runde < 20 s | Random ≤ 1%, Smart 0% | 7% / 2% | 0% / 0% / 0% ✔ |
+| Runde < 30 s (Random) | ≤ 3% | 9% | 0% ✔ |
+| Raport titani Smart : Random | 1,7–2,3× | 1,74× | 1,77× (16,81 / 9,52) ✔ |
+| Cota pierderilor la zid (Random) | 35–55% | 71% | 96% ✘ (vezi 4.3.2) |
+| Cota pierderilor la zid (Smart) | 40–70% | 90% | 99% ✘ (vezi 4.3.2) |
+| Timp per titan (median), titanii 1–16 | 10–40 s; sprint ≤ 16 s; boss ≤ 40 s | 12–37 s | 10–35 s; sprint ≤ 12 s; boss ≤ 35 s ✔ |
+| Rundă mediană | Random 120–200 s; Smart 240–420 s | 164 s / 283 s | 194 s / 251 s / 345 s ✔ |
+| Smart atinge limita de 30 min | < 2% | — | 0% ✔ |
+| Tunuri moarte pe zid | 0 (invariant) | 0,00 | 0,00 ✔ |
+| Decizii cu ≥ 2 opțiuni vizibile (Smart) | ≥ 65% | 77% | 77% ✔ |
+| Decizii fără alegere | ≤ 25% | 16–20% | 16% / 14% / 20% ✔ |
+| Timp cu zidul plin | ≤ 25% | 26–32% | 26% / 35% / 31% ✘ (vezi 4.3.2) |
+| Marja la doborâre (mediană) | 0,25–0,45 | 0,21–0,47 | 0,37 / 0,40 / 0,39 ✔ |
+| Timp în pericol ≥ 75% | 4–10% | 5–6% | 6% / 6% / 5% ✔ |
+| Pierderi „locuri pline” prin atingerea proprie | 0% | 65% din „locuri pline” | 0% ✔ |
+| Timp blocat continuu maxim | ≤ 1,55 s | 1,60 s | 0,00 s ✔ |
+| Bucăți din lovituri pe încheietură | ≥ 65% | 76–82% | 75% / 63% / 81% (Greedy sub țintă, itemul 3) |
+| Bucăți per titan | 2,5–3,5 | ~3 | 3,06 / 3,20 / 3,12 ✔ |
 | Tăieturi curate per titan, Smart vs Random | ≥ 1,5× | de măsurat |
 | Steaua „Linie curată” pentru Smart | 25–40% din titani | de măsurat |
 | Titanul 1 scenarizat | ≥ 3 bucăți în 4 s după prima atingere | test |
@@ -385,10 +433,17 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 | Interstițiale | 20 de runde de 40 s la rând → 0; ≤ 3,5 la 10 min | test |
 | Titanul Zilei | fiecare zi 0–730: Greedy trece ≥ 35%, primul titan ≥ 90% | test |
 
-**Testul de echilibru din CI** (`Tools/CoreTests/BalanceTests.cs`, categoria `Balance`, 50 de jocuri/robot, sămânța 20261015, ajutoare oprite) verifică azi doar praguri grosiere pentru bucla actuală; itemul 4 (bucla v2) le strânge la țintele de mai sus:
+**Testul de echilibru din CI** (`Tools/CoreTests/BalanceTests.cs`, categoria `Balance`, 50 de jocuri/robot, sămânța 20261015, presetul `v2`, ajutoare oprite) verifică versiuni grosiere ale țintelor de mai sus (50 de jocuri au zgomot; țintele exacte se verifică în `Tools/Sim` cu 300):
+- presetul `v2` e complet (toate câmpurile există în `TitanConfig`);
 - nicio rundă nu atinge limita de 30 min (≤ 2%);
-- media titanilor doborâți: Random ≥ 1,4, Smart ≥ 1,8; Smart ≥ Random;
-- pierdere la titanul 1: Random ≤ 30%, Smart ≤ 25%;
+- media titanilor doborâți: Random ≥ 5, Smart ≥ 9; raportul Smart : Random între 1,4× și 2,6×;
+- pierdere la titanul 1: Random ≤ 4%, Smart ≤ 2%; runde < 20 s: Random ≤ 2%, Smart 0%; runde < 30 s (Random) ≤ 6%;
+- runda mediană: Random 100–260 s, Smart 200–500 s;
+- cota pierderilor la zid: doar limitele de jos (Random ≥ 35%, Smart ≥ 40%), limitele de sus sunt depășite știut (4.3.2);
+- timp per titan median (titanii 1–16 cu ≥ 10 doborâri): 8–44 s, sprint ≤ 18 s, boss ≤ 44 s, pentru fiecare robot;
+- Smart: decizii cu ≥ 2 culori vizibile ≥ 60%, fără alegere ≤ 30%; zid plin ≤ 40% pentru fiecare robot (ținta 25% e depășită știut);
+- marja mediană la doborâre 0,20–0,50 și timp în pericol ≥ 75% între 2% și 12%, pentru fiecare robot;
+- paza și „blocat” (itemul 5): 0 pierderi „locuri pline” prin atingerea proprie, timp blocat continuu ≤ 1,55 s;
 - bucăți per titan între 1 și 8, iar loviturile pe încheietură taie bucăți;
 - Recuperare (itemul 2): 0 tunuri moarte pe zid, 0% timp cu un tun mort pe zid, 0% decizii cu tava doar cu tunuri moarte;
 - Tăieturi câștigate (itemul 3): ≥ 60% din bucăți din lovituri pe încheieturi, 2,5–3,5 bucăți per titan;
@@ -549,3 +604,4 @@ Decizii luate la mutare:
 - **Smart** „nu umple ultimul loc”: un tun fără țintă e trimis doar dacă nimic nu trage sau dacă mai sunt ≥ 3 locuri libere (≥ 2 când toată tava e moartă). Când nimic nu trage, a aștepta nu ajută, așa că trimite oricum (exact ca harness-ul măsurat).
 - „Timp blocat” = nimic nu trage și nu ai nicio atingere utilă (0 locuri libere, sau 1 loc liber și niciun tun din tavă cu culoare vizibilă) — aceeași definiție ca regula 4.2.9.
 - Tăieturile curate și stelele apar în raport abia cu itemul 7 (scorul).
+- De la itemul 4: roboții aleg doar tunuri pe care jocul le acceptă (`BotView.Tappable`, paza ultimului loc), Smart dă +60 etichetei TAIE! (`BotView.TrayCutShot`), iar raportul arată cota zidului din pierderi, marja mediană, „la mustață”, rolul fiecărui titan și intervalul timpilor medii pe titan. `--static` listează titanii n = 1–25 cu rolul și nivelul din ciclu.
