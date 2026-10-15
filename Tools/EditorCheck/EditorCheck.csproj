@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compile check for the Unity editor scripts, outside Unity:
+      dotnet build Tools/EditorCheck
+    Compiles Assets/Titan/Editor/**/*.cs against UnityEngine.dll + UnityEditor.dll from NuGet Unity3D.SDK 2021.1.14.1.
+    The 2021 reference lacks a few Unity 6 APIs: use an API that exists in both.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);UNITY_EDITOR;ENABLE_LEGACY_INPUT_MANAGER</DefineConstants>
+    <AssetTargetFallback>$(AssetTargetFallback);net45</AssetTargetFallback>
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Assets/Titan/Editor/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Unity3D.SDK" Version="2021.1.14.1" />
+  </ItemGroup>
+
+</Project>

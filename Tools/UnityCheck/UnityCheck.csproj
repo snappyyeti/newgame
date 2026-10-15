@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compile check for the Unity runtime code, outside Unity:
+      dotnet build Tools/UnityCheck
+    Compiles Assets/Titan/Scripts/**/*.cs (Core + Game) against the UnityEngine module reference assemblies
+    from NuGet (2021.3.33, the newest set on NuGet; the project runs Unity 6000.6). It catches typos, missing
+    usings and C# > 9 syntax. It does NOT catch APIs that are obsolete-as-error only in Unity 6
+    (Rigidbody.velocity setters, FindObjectOfType, WWW): those rules are in the README and the review list.
+    Nothing is produced for the game; the output DLL is thrown away.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);ENABLE_LEGACY_INPUT_MANAGER</DefineConstants>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The module DLLs target net45; they are reference-only here, so the fallback warning is noise. -->
+    <AssetTargetFallback>$(AssetTargetFallback);net45</AssetTargetFallback>
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Assets/Titan/Scripts/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+  </ItemGroup>
+
+</Project>

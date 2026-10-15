@@ -29,7 +29,11 @@ crashlytics-build.properties
 .idea/
 .DS_Store
 
-# Core logic tests run with dotnet (outside Unity)
+# Tools run with dotnet (outside Unity). *.csproj is ignored above (Unity regenerates its own),
+# so every Tools project is whitelisted here explicitly.
 !/Tools/CoreTests/CoreTests.csproj
-/Tools/CoreTests/bin/
-/Tools/CoreTests/obj/
+!/Tools/Sim/*.csproj
+!/Tools/UnityCheck/UnityCheck.csproj
+!/Tools/EditorCheck/EditorCheck.csproj
+/Tools/*/bin/
+/Tools/*/obj/
