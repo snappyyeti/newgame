@@ -27,7 +27,8 @@ namespace Titan.Sim
                     "SalvageEnabled=true", "PointsPerSalvagedAmmo=5",                                   // CORE-1
                     "TargetOrder=FarthestFirst",                                                         // CORE-2
                     "TrayRefill=PerSlot", "NoTripleColor=true",                                          // CORE-3
-                    "ApproachBaseSeconds=4", "ApproachSecondsPerCube=0.075", "ApproachSpeedup=0.98",
+                    "FireInterval=0.23", "AmmoSizes=8,12,16,20,24",                                      // fix pass (DESIGN 4.3.3)
+                    "ApproachBaseSeconds=4", "ApproachSecondsPerCube=0.06", "ApproachSpeedup=0.992",
                     "MinApproachSeconds=12", "MinApproachFactor=0.6",
                     "TutorialTitans=3", "TutorialSecondsPerCube=0.11",
                     "KnockbackPerCube=0.03", "KnockbackMin=0.3", "KnockbackMax=1.5",

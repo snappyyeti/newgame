@@ -10,7 +10,7 @@ namespace Titan.Core
         /// <summary>X position of each firing slot, in cube units, used to pick the nearest target.</summary>
         public float SlotSpacing = 2.4f;
 
-        public float FireInterval = 0.3f;
+        public float FireInterval = 0.23f;
         public float DeployDelay = 0.25f;
 
         /// <summary>The titan's front starts this far from the wall (in cubes) and loses when it reaches 0.</summary>
@@ -23,8 +23,8 @@ namespace Titan.Core
         /// with perCube = TutorialSecondsPerCube for the first TutorialTitans titans. n is the titan number, not its build level.
         /// </summary>
         public float ApproachBaseSeconds = 4f;
-        public float ApproachSecondsPerCube = 0.075f;
-        public float ApproachSpeedup = 0.98f;
+        public float ApproachSecondsPerCube = 0.06f;
+        public float ApproachSpeedup = 0.992f;
         public float MinApproachSeconds = 12f;
         public float MinApproachFactor = 0.6f;
         public int TutorialTitans = 3;
@@ -68,7 +68,7 @@ namespace Titan.Core
 
         /// <summary>Chance that a drawn cannon has a color that is visible right now (the rest is pure luck).</summary>
         public float VisibleColorBias = 0.65f;
-        public int[] AmmoSizes = { 10, 15, 20, 25, 30 };
+        public int[] AmmoSizes = { 8, 12, 16, 20, 24 };
 
         // ------------------------------------------------------------ tray (DESIGN.md 4.2.4, CORE-3 A)
         /// <summary>PerSlot: a deployed cannon is replaced at once (conveyor). Batch: 3 new cannons when all 3 are used (A/B and tests only).</summary>

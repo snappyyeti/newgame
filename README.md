@@ -15,7 +15,7 @@ Control: atingi / dai click pe un tun de jos. Butonul de pauză e sus în dreapt
 
 1. **Titanul și ciclurile.** Titanul pășește spre zid; bara de sus arată cât de aproape e. Titanii vin în **cicluri de câte 5**: încălzire, construcție, împingere, **TITAN RAPID!** (un titan mic, eliberarea dinaintea vârfului) și **TITAN GIGANT!** (vârful ciclului, bonus ×2). Sus scrie „Ciclul c · Titanul #n”, cu 5 puncte (al 5-lea e o coroană) care se umplu pe măsură ce dobori titanii ciclului. Vezi tabelul de mai jos.
 2. **Tunurile (tava-bandă).** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când trimiți unul, un tun nou urcă imediat în locul lui. Tava nu primește niciodată 3 tunuri de aceeași culoare dacă mai există alte culori în pachet. Când pachetul titanului s-a golit, locul rămâne gol, cu un cerc închis și „pachet gol”.
-3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri** (un al 6-lea doar cu „+1 Loc”, vezi Reclamele). Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul. Eticheta de muniție a unui tun din tavă stă **sub** tun; a unui tun de pe zid, deasupra lui. Pe fața zidului, 5 pătrățele arată locurile: gol = doar contur, trage = culoarea tunului cu simbolul ei, așteaptă = gri cu „zzz”. Chenarul lor e alb, chihlimbar când 3 tunuri așteaptă, roșu pulsând la 4 sau mai multe.
+3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri** (un al 6-lea doar cu „+1 Loc”, vezi Reclamele). Trage singur, cam 4 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul. Eticheta de muniție a unui tun din tavă stă **sub** tun; a unui tun de pe zid, deasupra lui. Pe fața zidului, 5 pătrățele arată locurile: gol = doar contur, trage = culoarea tunului cu simbolul ei, așteaptă = gri cu „zzz”. Chenarul lor e alb, chihlimbar când 3 tunuri așteaptă, roșu pulsând la 4 sau mai multe.
 4. **Așteptarea și Recuperarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui. „zzz” înseamnă mereu că mai există cuburi de culoarea lui, ascunse în spate; câte culori sunt doar ascunse arată cipul „N culori ascunse ?” de sub bară. Când cade o bucată, muniția care nu mai are ce lovi pleacă odată cu ea: un tun de pe zid a cărui culoare a dispărut de tot zboară de pe zid cu **„RECUPERAT +puncte”**; din tunurile din tavă se scade muniția în plus (un „-N” zboară din bucată spre tun și numărul scade sub ochii tăi; un tun ajuns la 0 dispare și urcă altul în locul lui); din pachet se scade pe nevăzute. Pe zid nu rămâne niciodată un tun mort.
 5. **Tăieturile (combo).** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul sunt **încheieturile**: au culoarea lor și o dungă albă („cusătura”). Brațele și capul nu cad singure: tunul de culoarea brațului îl „mănâncă” de la mână spre umăr, fără să-l rupă. Bucata se rupe doar când distrugi încheietura (sau corpul de sub ea), cade cu fizică și toate cuburile din ea îți dau puncte. Mâna are culoarea brațului (o recunoști după rama închisă). Eticheta galbenă **TAIE!** apare deasupra unui tun din tavă doar dacă muniția **lui**, trimis acum, ajunge să rupă o bucată (jocul simulează țintirea pe o copie a titanului, deci eticheta nu minte). Dacă tunul singur nu ajunge, dar mai ai pe zid sau în tavă alt tun de aceeași culoare, apare un contur gol „taie în N” (N = câte lovituri de culoarea asta mai trebuie). Cât timp brațul sau capul mai are cel puțin 80% din cuburile lui, cusătura încheieturii e **aurie**: tăiat acum, iese o **tăietură curată** (vezi scorul).
 6. **Tăietura cumpără timp.** Fiecare bucată căzută împinge titanul înapoi cu 0,03 × cuburile ei (între 0,3 și 1,5 unități, niciodată mai departe de unde a pornit) și îi întârzie pasul următor cu 0,5 + 0,01 × cuburi secunde (cel mult 1 s). Titanul se clatină înapoi. Bucata care îl doboară de tot nu-l mai împinge.
@@ -64,7 +64,7 @@ Fiecare titan doborât primește până la 3 stele: **Doborât**; **Decapitare**
 
 Reclamele sunt **simulate**: un ecran „RECLAMĂ SIMULATĂ — Înlocuitor pentru LevelPlay” (6 s cu recompensă, 4 s între runde). Nu e nicio rețea de reclame și niciun pachet nou; LevelPlay vine mai târziu, separat. Toate regulile sunt în `docs/DESIGN.md`, secțiunile 10 și 10.5. Pe scurt:
 
-- **Nimic înainte de 3 runde și 10 minute de joc**, nimic în Titanul Zilei (nici înainte, nici după, nici la antrenament), niciun banner. În timpul rundei nu pornește nicio reclamă: singura ofertă e butonul „+1 Loc”, pe care îl apeși doar dacă vrei.
+- **Nimic înainte de 3 runde și 10 minute de joc**, nimic în Titanul Zilei (nici înainte, nici după, nici la antrenament), niciun banner. În timpul rundei nu pornește nicio reclamă: singurele oferte sunt butonul „+1 Loc” de pe zid și rândul „Fără reclame 30 min” din meniul de pauză (jocul e oprit), pe care le apeși doar dacă vrei.
 - **„A doua suflare”** (o dată pe rundă): când pierzi după ce ai doborât un titan sau ai distrus ≥ 15% din cel curent, după 0,6 s apare cardul „A DOUA SUFLARE” în locul ecranului de final (titanul, cât la sută e distrus, scorul). Dacă accepți: tunurile adormite de pe zid se întorc în pachet, titanul dă înapoi un sfert din drum și stă 2 s, iar dacă niciun tun din tavă nu are culoare vizibilă, tava se reface din culori vizibile. Toate stricăciunile titanului rămân. Prima dată în viață e gratis („Revino gratis”). Dacă refuzi, mergi la rezultate și **nu urmează nicio reclamă**.
 - **„+1 Loc”**: un buton auriu „+1 LOC” apare pe zid (dreapta, sus) când ai cel puțin 4 tunuri pe zid și 3 dintre ele așteaptă, 1 s la rând. Îl apeși tu; jocul se oprește și vezi cardul. Primești un al 6-lea loc (cu margine aurie) până dobori titanul. O dată pe titan, de cel mult 2 ori pe rundă, din titanul 2; prima dată e gratis. După un refuz butonul dispare 20 s; după două, nu mai apare nici pe titanul următor. **O atingere pe tavă nu deschide niciodată o ofertă.**
 - **Între runde** (doar când apeși „Joacă din nou”, „Reia ciclul” sau „Joc nou”): uneori o reclamă, și atunci sub butoane scrie dinainte „Reclamă înainte de rundă”. Niciodată la primul final din sesiune, în prima sesiune, după un refuz al revenirii, după un record nou sau un titan nou, după o rundă sub 45 s; cel mult o dată la 4 minute (presetarea „light”), cel mult 5 pe sesiune și 15 pe zi.
@@ -88,26 +88,26 @@ Reclamele sunt **simulate**: un ecran „RECLAMĂ SIMULATĂ — Înlocuitor pent
 - **Recuperarea** socotește întâi muniția deja pusă pe zid: ce trimiți pe zid acoperă primele cuburi ale culorii, iar din tavă și din pachet pleacă doar ce rămâne în plus. Din pachet se scade întâi din tunurile cele mai mici. Muniția recuperată din pachet nu dă puncte (nu o vezi).
 - **Ochii** sunt doar pe fața capului. Dacă un tun de culoarea capului mănâncă tot capul din jurul lor, ochii (cu cuburile ascunse în spatele lor) cad ca o bucată mică.
 - **Ce se rupe:** corpul și picioarele stau pe pământ chiar dacă sunt ciuruite. Se rup doar brațele și capul. Altfel, tunul de culoarea picioarelor tăia șoldurile și cădea tot titanul în câteva secunde.
-- **Muniția** fiecărui titan acoperă exact cuburile lui, împărțită în tunuri de 10–30. În 65% din cazuri, tunul nou are o culoare care se vede acum, iar în rest e la întâmplare. Nu există alt „regizor”.
+- **Muniția** fiecărui titan acoperă exact cuburile lui, împărțită în tunuri de 8–24. În 65% din cazuri, tunul nou are o culoare care se vede acum, iar în rest e la întâmplare. Nu există alt „regizor”.
 
 ## Titanii
 
-Titanul #n e construit la un „nivel” L ales de ciclul de 5 (c = ciclul, de la 0): încălzire L = min(1+c, 5), construcție min(2+c, 6), împingere min(3+c, 6), **sprint** L1 (L2 din ciclul 3), **gigant** min(4+c, 8). Timpul până la zid = max(12 s, (4 + s/cub × cuburi) × max(0,6; 0,98^(n−1))), cu 0,11 s/cub la titanii 1–3 (ritm de învățare) și 0,075 s/cub după. Medii pe 200 de titani:
+Titanul #n e construit la un „nivel” L ales de ciclul de 5 (c = ciclul, de la 0): încălzire L = min(1+c, 5), construcție min(2+c, 6), împingere min(3+c, 6), **sprint** L1 (L2 din ciclul 3), **gigant** min(4+c, 8). Timpul până la zid = max(12 s, (4 + s/cub × cuburi) × max(0,6; 0,992^(n−1))), cu 0,11 s/cub la titanii 1–3 (ritm de învățare) și 0,06 s/cub după. Medii pe 200 de titani:
 
 | Titan | Rol | L | Cuburi | Culori | Timp până la zid |
 |---|---|---|---|---|---|
 | 1 | încălzire | 1 | 142 | 3 | 20 s |
 | 2 | construcție | 2 | 160 | 3 | 21 s |
 | 3 | împingere | 3 | 206 | 4 | 26 s |
-| 4 | **sprint** | 1 | 142 | 3 | 14 s |
-| 5 | **gigant** | 4 | 477 | 4 | 37 s |
-| 6 | încălzire | 2 | 160 | 3 | 14 s |
-| 8 | împingere | 4 | 477 | 4 | 35 s |
+| 4 | **sprint** | 1 | 142 | 3 | 12 s |
+| 5 | **gigant** | 4 | 477 | 4 | 32 s |
+| 6 | încălzire | 2 | 160 | 3 | 13 s |
+| 8 | împingere | 4 | 477 | 4 | 31 s |
 | 9 | **sprint** | 1 | 142 | 3 | 12 s |
-| 10 | **gigant** | 5 | 516 | 5 | 36 s |
-| 15 | **gigant** | 6 | 561 | 5 | 35 s |
-| 20 | **gigant** | 7 | 996 | 5–6 | 54 s |
-| 25 | **gigant** | 8 | 996 | 5–6 | 48 s |
+| 10 | **gigant** | 5 | 516 | 5 | 33 s |
+| 15 | **gigant** | 6 | 561 | 5 | 34 s |
+| 20 | **gigant** | 7 | 996 | 5–6 | 55 s |
+| 25 | **gigant** | 8 | 996 | 5–6 | 53 s |
 
 Tabelul complet (n = 1–25): `dotnet run -c Release --project Tools/Sim -- --static --games 1`. Reculul de la tăieturi lungește timpul real.
 

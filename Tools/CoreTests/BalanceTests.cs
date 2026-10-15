@@ -102,24 +102,26 @@ namespace Titan.Tests
             Assert.LessOrEqual(Random.Under30, 0.06, "Random runs under 30 s");
         }
 
-        /// <summary>Target: median run Random 120-200 s, Smart 240-420 s.</summary>
+        /// <summary>Target: median run Random 120-200 s, Smart 240-420 s (measured 171-179 / 333-353 s on seeds 1-3).</summary>
         [Test]
         public void RunLengthIsInTheBand()
         {
-            Assert.That(Random.RunP50, Is.InRange(100.0, 260.0), "Random median run (s)");
-            Assert.That(Smart.RunP50, Is.InRange(200.0, 500.0), "Smart median run (s)");
+            Assert.That(Random.RunP50, Is.InRange(110.0, 220.0), "Random median run (s)");
+            Assert.That(Smart.RunP50, Is.InRange(220.0, 450.0), "Smart median run (s)");
         }
 
         /// <summary>
-        /// Target: wall share of losses Random 35-55%, Smart 40-70%. Only the lower bounds are guarded: with salvage
-        /// (CORE-1) and the last-slot guard (CORE-4) jams are rare and the wall takes 96-99% of losses, a known miss
-        /// recorded in DESIGN.md 4.3.2.
+        /// Target: wall share of losses Random 35-55%, Smart 40-70%. That target cannot be met with salvage (CORE-1) and
+        /// the last-slot guard (CORE-4): the wall takes 92-100% of losses, and every config lever that lowers it also
+        /// removes the skill gap (DESIGN.md 4.3.2). Until the owner restates it, only the lower bounds are guarded,
+        /// plus the non-wall endings must stay possible (some bot still loses to "locuri pline" or "blocat").
         /// </summary>
         [Test]
         public void TheWallIsAThreat()
         {
             Assert.GreaterOrEqual(Random.WallShareOfLosses, 0.35, "Random wall share of losses");
             Assert.GreaterOrEqual(Smart.WallShareOfLosses, 0.40, "Smart wall share of losses");
+            Assert.Less(summaries.Values.Min(s => s.WallShareOfLosses), 1.0, "SlotsFull/Deadlock losses must stay possible for some bot");
         }
 
         /// <summary>Target: median clear 10-40 s for titans 1-16, sprint &lt;= 16 s, boss &lt;= 40 s.</summary>
@@ -137,14 +139,14 @@ namespace Titan.Tests
 
         /// <summary>
         /// Target: Smart decisions with &gt;= 2 visible options &gt;= 65%, zero-choice &lt;= 25%; line full &lt;= 25% of play
-        /// (measured 25-35% depending on the bot: a known miss, DESIGN.md 4.3.2; guarded at 40%).
+        /// (measured 8-12% at 300 games since the fire/ammo/clock retune, DESIGN.md 4.3.3).
         /// </summary>
         [Test]
         public void DecisionsStayReal()
         {
             Assert.GreaterOrEqual(Smart.MeaningfulChoiceShare, 0.60, "Smart decision points with >= 2 visible colors");
             Assert.LessOrEqual(Smart.ZeroChoiceShare, 0.30, "Smart zero-choice decision points");
-            foreach (var s in summaries.Values) Assert.LessOrEqual(s.LineFullShare, 0.40, s.Bot + " time with the line full");
+            foreach (var s in summaries.Values) Assert.LessOrEqual(s.LineFullShare, 0.25, s.Bot + " time with the line full");
         }
 
         /// <summary>Target: median margin at defeat 0.25-0.45; time at danger &gt;= 75% between 4% and 10%.</summary>
@@ -203,9 +205,9 @@ namespace Titan.Tests
         }
 
         /// <summary>
-        /// CORE-5 (cut grade): target clean cuts per titan Smart ≥ 1.5× Random (measured 1.60× at 300 games; coarse
-        /// 1.3× here). Both earnable stars are reachable and neither is free. The s3 target (Smart 25-40%) is a known
-        /// miss: Smart does not hold cannons back for a star and earns s3 on about 9% of titans (DESIGN.md 6.3).
+        /// CORE-5 (cut grade): target clean cuts per titan Smart ≥ 1.5× Random (measured 1.54-1.61× at 300 games; coarse
+        /// 1.3× here). Both earnable stars are reachable and neither is free. Target Smart s3 25-40% of titans (measured
+        /// 27-28% on seeds 1-3 at 300 games; coarse floor 18% here).
         /// </summary>
         [Test]
         public void CleanCutsRewardSkillAndStarsAreReachable()
@@ -216,7 +218,7 @@ namespace Titan.Tests
                 Assert.That(s.StarDecapitationRate, Is.InRange(0.2, 0.9), s.Bot + " decapitation star rate");
                 Assert.That(s.StarCleanLineRate, Is.InRange(0.0, 0.5), s.Bot + " clean line star rate");
             }
-            Assert.Greater(Smart.StarCleanLineRate + Random.StarCleanLineRate, 0.0, "the clean line star must be reachable");
+            Assert.GreaterOrEqual(Smart.StarCleanLineRate, 0.18, "Smart clean line star rate (target 25-40%)");
         }
 
         [Test]

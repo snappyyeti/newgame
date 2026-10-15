@@ -127,10 +127,12 @@ namespace Titan.Tests
         public void ApproachFollowsTheFormula()
         {
             var cfg = new TitanConfig();
+            Assert.AreEqual(0.06f, cfg.ApproachSecondsPerCube, 1e-6, "DESIGN.md 4.3.3");
+            Assert.AreEqual(0.992f, cfg.ApproachSpeedup, 1e-6, "DESIGN.md 4.3.3");
             Assert.AreEqual(Math.Max(12f, 4f + 0.11f * 142), cfg.ApproachSeconds(1, 142), 1e-3, "titan 1: tutorial pace");
-            Assert.AreEqual((4f + 0.11f * 200) * (float)Math.Pow(0.98, 2), cfg.ApproachSeconds(3, 200), 1e-3, "titan 3: still tutorial");
-            Assert.AreEqual((4f + 0.075f * 477) * (float)Math.Pow(0.98, 4), cfg.ApproachSeconds(5, 477), 1e-3, "titan 5: normal pace");
-            Assert.AreEqual((4f + 0.075f * 996) * 0.6f, cfg.ApproachSeconds(60, 996), 1e-3, "the speedup stops at 0.6");
+            Assert.AreEqual((4f + 0.11f * 200) * (float)Math.Pow(0.992, 2), cfg.ApproachSeconds(3, 200), 1e-3, "titan 3: still tutorial");
+            Assert.AreEqual((4f + 0.06f * 477) * (float)Math.Pow(0.992, 4), cfg.ApproachSeconds(5, 477), 1e-3, "titan 5: normal pace");
+            Assert.AreEqual((4f + 0.06f * 996) * 0.6f, cfg.ApproachSeconds(80, 996), 1e-3, "the speedup stops at 0.6 (0.992^79 = 0.53)");
             Assert.AreEqual(12f, cfg.ApproachSeconds(40, 50), 1e-3, "never below 12 s");
         }
 
