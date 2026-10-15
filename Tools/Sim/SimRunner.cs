@@ -12,14 +12,11 @@ namespace Titan.Sim
     public sealed class BotView
     {
         readonly TitanGame game;
-        HashSet<Int3> joints = new HashSet<Int3>();
 
         internal BotView(TitanGame game)
         {
             this.game = game;
         }
-
-        internal void SetJoints(HashSet<Int3> titanJoints) => joints = titanJoints;
 
         public int ColorCount => MonsterBuilder.MaxColors;
         public int TraySize => game.Tray.Length;
@@ -34,14 +31,11 @@ namespace Titan.Sim
         public int[] VisibleCounts() => SimRunner.VisibleCounts(game.Monster);
         public int[] CubeCounts() => SimRunner.Counts(game.Monster);
 
-        /// <summary>True when a joint (shoulder or neck) of this color is visible: sending it now makes the cut.</summary>
-        public bool JointVisible(int color)
-        {
-            var m = game.Monster;
-            foreach (var j in joints)
-                if (m.Has(j) && m.ColorAt(j) == color && m.IsVisible(j)) return true;
-            return false;
-        }
+        /// <summary>True when a joint (shoulder or neck, Monster.IsJoint) of this color is visible.</summary>
+        public bool JointVisible(int color) => game.Monster.HasVisibleJointOfColor(color);
+
+        /// <summary>The "TAIE!" tag the player sees: 0-based shot of tray cannon i that cuts a piece, or -1.</summary>
+        public int TrayCutShot(int i) => game.Tray[i] != null ? game.ShotsToSever(game.Tray[i]) : -1;
     }
 
     public struct TitanRecord
@@ -123,23 +117,6 @@ namespace Titan.Sim
             return v;
         }
 
-        /// <summary>Joint cubes: not anchored, with an anchored face neighbour (shoulders and neck).</summary>
-        public static HashSet<Int3> Joints(Monster m)
-        {
-            var set = new HashSet<Int3>();
-            foreach (var kv in m.Cubes)
-            {
-                if (m.IsAnchored(kv.Key)) continue;
-                foreach (var d in Int3.Neighbours)
-                    if (m.Has(kv.Key + d) && m.IsAnchored(kv.Key + d))
-                    {
-                        set.Add(kv.Key);
-                        break;
-                    }
-            }
-            return set;
-        }
-
         /// <summary>Seed of game i of a batch. The same i gives the same titans and draws stream for every bot.</summary>
         public static ulong GameSeed(ulong masterSeed, int index) => SeededRandom.Derive(masterSeed, (ulong)index);
 
@@ -161,11 +138,10 @@ namespace Titan.Sim
             double t = 0, titanStart = 0, stuck = 0;
             double next = 0.8 + botRng.NextDouble() * 0.8; // first look at the tray
             int level = g.Level;
-            var joints = Joints(g.Monster);
-            view.SetJoints(joints);
             g.Events.Clear();
             int lastDecision = -1; // 0 tap, 1 wait, 2 line full
-            Int3 lastShotCube = default;
+            bool lastShotJoint = false;
+            var titan = g.Monster; // the titan the events refer to (g.Monster may already be the next one)
 
             while (!g.IsOver && t < MaxTime)
             {
@@ -201,7 +177,7 @@ namespace Titan.Sim
                 }
                 if (g.IsOver)
                 {
-                    ReadEvents(g, st, ref level, ref titanStart, ref joints, ref lastShotCube, view, t, g.Distance, g.ApproachSeconds, cfg);
+                    ReadEvents(g, st, ref level, ref titanStart, ref lastShotJoint, ref titan, t, g.Distance, g.ApproachSeconds, cfg);
                     break;
                 }
 
@@ -224,15 +200,15 @@ namespace Titan.Sim
                 float approach = g.ApproachSeconds;
                 g.Tick((float)Dt);
                 t += Dt;
-                ReadEvents(g, st, ref level, ref titanStart, ref joints, ref lastShotCube, view, t, distBefore, approach, cfg);
+                ReadEvents(g, st, ref level, ref titanStart, ref lastShotJoint, ref titan, t, distBefore, approach, cfg);
             }
             st.RunTime = t;
             st.Score = g.Score;
             return st;
         }
 
-        static void ReadEvents(TitanGame g, GameStats st, ref int level, ref double titanStart, ref HashSet<Int3> joints,
-            ref Int3 lastShotCube, BotView view, double t, double distBefore, double approach, TitanConfig cfg)
+        static void ReadEvents(TitanGame g, GameStats st, ref int level, ref double titanStart,
+            ref bool lastShotJoint, ref Monster titan, double t, double distBefore, double approach, TitanConfig cfg)
         {
             bool pieceFell = false;
             foreach (var e in g.Events)
@@ -240,10 +216,10 @@ namespace Titan.Sim
                 switch (e.Kind)
                 {
                     case EventKind.Shot:
-                        lastShotCube = e.Cube;
+                        lastShotJoint = titan.IsJoint(e.Cube);
                         break;
                     case EventKind.PieceFell:
-                        st.Pieces.Add(new PieceRecord { Level = level, Size = e.Piece.Count, TimeIntoTitan = t - titanStart, FromJointShot = joints.Contains(lastShotCube) });
+                        st.Pieces.Add(new PieceRecord { Level = level, Size = e.Piece.Count, TimeIntoTitan = t - titanStart, FromJointShot = lastShotJoint });
                         pieceFell = true;
                         break;
                     case EventKind.TitanDefeated:
@@ -253,8 +229,7 @@ namespace Titan.Sim
                     case EventKind.TitanSpawned:
                         titanStart = t;
                         level = e.Level;
-                        joints = Joints(g.Monster);
-                        view.SetJoints(joints);
+                        titan = g.Monster;
                         break;
                     case EventKind.GameOver:
                         st.Reason = e.Reason;

@@ -31,6 +31,18 @@ namespace Titan.Core
         public float VisibleColorBias = 0.65f;
         public int[] AmmoSizes = { 10, 15, 20, 25, 30 };
 
+        /// <summary>
+        /// Salvage (DESIGN.md 4.2.2): ammo that has nothing left to hit leaves with the fallen piece. Line cannons whose
+        /// color is gone fly off ("RECUPERAT"), surplus ammo comes off the deck and then the tray. Also the ship gate of
+        /// the rescue ads (<see cref="TitanGame.SalvageActive"/>).
+        /// </summary>
+        public bool SalvageEnabled = true;
+        /// <summary>Points per salvaged shot taken from a line or tray cannon (deck salvage is silent and gives nothing).</summary>
+        public int PointsPerSalvagedAmmo = 5;
+
+        /// <summary>Which visible cube a cannon shoots first (DESIGN.md 4.2.3).</summary>
+        public TargetOrder TargetOrder = TargetOrder.FarthestFirst;
+
         public float ApproachSeconds(int level, int cubes) =>
             Math.Max(MinApproachSeconds, (ApproachBaseSeconds + ApproachSecondsPerCube * cubes) * (float)Math.Pow(ApproachSpeedup, level - 1));
     }
@@ -61,6 +73,7 @@ namespace Titan.Core
         TitanSpawned,   // Level
         TrayRefilled,
         GameOver,       // Reason
+        Salvaged,       // Slot (line cannon leaves) or TraySlot (tray cannon loses Ammo); Color, Ammo, Points
     }
 
     public enum LoseReason
@@ -82,6 +95,8 @@ namespace Titan.Core
         public int Level;
         public float Distance;
         public LoseReason Reason;
+        /// <summary>Salvaged: the ammo taken away (a line cannon: all it had left).</summary>
+        public int Ammo;
     }
 
     /// <summary>
@@ -125,6 +140,9 @@ namespace Titan.Core
         public float SlotX(int slot) => (slot - (Config.LineSlots - 1) / 2f) * Config.SlotSpacing;
         public int DeckCount => deck.Count;
 
+        /// <summary>Ship gate for the rescue ads (ADS-2): they exist only while salvage is on (DESIGN.md 11.7).</summary>
+        public bool SalvageActive => Config.SalvageEnabled;
+
         /// <summary>Shots of this color still available: deck, tray and firing line.</summary>
         public int AmmoAvailable(int color)
         {
@@ -132,6 +150,22 @@ namespace Titan.Core
             foreach (var c in deck) if (c.Color == color) n += c.Ammo;
             foreach (var c in Tray) if (c != null && c.Color == color) n += c.Ammo;
             foreach (var c in Line) if (c != null && c.Color == color) n += c.Ammo;
+            return n;
+        }
+
+        /// <summary>Shots of this color still in the (hidden) deck.</summary>
+        public int DeckAmmo(int color)
+        {
+            int n = 0;
+            foreach (var c in deck) if (c.Color == color) n += c.Ammo;
+            return n;
+        }
+
+        /// <summary>Shots of this color in the tray.</summary>
+        public int TrayAmmo(int color)
+        {
+            int n = 0;
+            foreach (var c in Tray) if (c != null && c.Color == color) n += c.Ammo;
             return n;
         }
 
@@ -195,9 +229,9 @@ namespace Titan.Core
                     }
                     Shoot(s, cannon, target);
                     cannon.Cooldown += Config.FireInterval;
-                    if (Monster.Count == 0) break;
+                    if (Monster.Count == 0 || Line[s] != cannon) break; // salvage may have taken it off the line
                 }
-                if (cannon.Ammo == 0)
+                if (Line[s] == cannon && cannon.Ammo == 0)
                 {
                     Line[s] = null;
                     Events.Add(new GameEvent { Kind = EventKind.CannonEmpty, Slot = s, Color = cannon.Color });
@@ -226,12 +260,160 @@ namespace Titan.Core
                 Score += points;
                 Events.Add(new GameEvent { Kind = EventKind.PieceFell, Slot = slot, Piece = piece, Points = points });
             }
+            if (pieces.Count > 0 && Monster.Count > 0) Salvage(); // an empty titan is defeated instead (leftover bonus)
+        }
+
+        /// <summary>
+        /// Takes away ammo that has nothing left to hit (DESIGN.md 4.2.2). Runs after a piece falls and before every
+        /// slots-full check, so after every Tick: no line cannon has a vanished color, and for every color
+        /// deck + tray ammo &lt;= cubes left (in fact deck + tray + line ammo == cubes left whenever deck or tray still
+        /// holds that color).
+        /// </summary>
+        void Salvage()
+        {
+            if (!Config.SalvageEnabled || Monster.Count == 0) return;
+            bool trayEmptied = false;
+
+            // i) Line cannons whose color is gone fly off the wall, with points.
+            for (int s = 0; s < Line.Length; s++)
+            {
+                var c = Line[s];
+                if (c == null || c.Ammo <= 0 || Monster.CountOfColor(c.Color) > 0) continue; // Ammo 0: Tick retires it
+                int points = c.Ammo * Config.PointsPerSalvagedAmmo;
+                Score += points;
+                Events.Add(new GameEvent { Kind = EventKind.Salvaged, Slot = s, Color = c.Color, Ammo = c.Ammo, Points = points });
+                Line[s] = null;
+            }
+
+            for (int color = 0; color < MonsterBuilder.MaxColors; color++)
+            {
+                int deckAmmo = 0, trayAmmo = 0, lineAmmo = 0;
+                foreach (var c in deck) if (c.Color == color) deckAmmo += c.Ammo;
+                foreach (var c in Tray) if (c != null && c.Color == color) trayAmmo += c.Ammo;
+                if (deckAmmo + trayAmmo == 0) continue;
+                foreach (var c in Line) if (c != null && c.Color == color) lineAmmo += c.Ammo;
+                // Surplus counts the line too: ammo already on the wall covers its cubes first, so a falling piece
+                // takes all the dead ammo off the deck and tray at once (no trickle of "-1" on later shots).
+                int surplus = Math.Min(deckAmmo + trayAmmo + lineAmmo - Monster.CountOfColor(color), deckAmmo + trayAmmo);
+                if (surplus <= 0) continue;
+
+                // ii) Deck cannons of that color, smallest first, silently.
+                var order = new List<int>();
+                for (int i = 0; i < deck.Count; i++) if (deck[i].Color == color) order.Add(i);
+                order.Sort((a, b) => deck[a].Ammo != deck[b].Ammo ? deck[a].Ammo.CompareTo(deck[b].Ammo) : a.CompareTo(b));
+                foreach (int i in order)
+                {
+                    if (surplus == 0) break;
+                    int take = Math.Min(surplus, deck[i].Ammo);
+                    deck[i].Ammo -= take;
+                    surplus -= take;
+                }
+                deck.RemoveAll(c => c.Ammo <= 0);
+
+                // iii) Then tray cannons, left to right, visibly.
+                for (int i = 0; i < Tray.Length && surplus > 0; i++)
+                {
+                    var c = Tray[i];
+                    if (c == null || c.Color != color) continue;
+                    int take = Math.Min(surplus, c.Ammo);
+                    c.Ammo -= take;
+                    surplus -= take;
+                    int points = take * Config.PointsPerSalvagedAmmo;
+                    Score += points;
+                    Events.Add(new GameEvent { Kind = EventKind.Salvaged, TraySlot = i, Color = color, Ammo = take, Points = points });
+                    if (c.Ammo == 0)
+                    {
+                        Tray[i] = null;
+                        trayEmptied = true;
+                    }
+                }
+            }
+
+            // iv) A tray emptied by salvage refills like a tray emptied by taps (CORE-3 PerSlot: refill each emptied slot).
+            if (trayEmptied)
+            {
+                bool allEmpty = true;
+                foreach (var c in Tray) if (c != null) allEmpty = false;
+                if (allEmpty) RefillTray();
+            }
+        }
+
+        // ---------------------------------------------------------------- cut prediction ("TAIE!")
+
+        Monster severMonster;
+        int severEpoch;
+        /// <summary>Per (color, firing slot): first shot that cuts (0 = none found yet) and how far the look-ahead went.</summary>
+        readonly Dictionary<int, int[]> severCache = new Dictionary<int, int[]>();
+
+        /// <summary>Slot a tray cannon would take if deployed now (the first free one; slot 0 when the line is full).</summary>
+        public int DeploySlot
+        {
+            get
+            {
+                int slot = Array.IndexOf(Line, null);
+                return slot < 0 ? 0 : slot;
+            }
+        }
+
+        /// <summary>
+        /// Cut prediction for a tray cannon (the "TAIE!" tag): deployed now, alone, with no other cannon firing, the
+        /// 0-based index of its shot that makes a piece fall, or -1 if its ammo never cuts. Simulated on a copy of the
+        /// titan with the real targeting rule; cached per (color, slot, titan epoch).
+        /// </summary>
+        public int ShotsToSever(Cannon c)
+        {
+            if (c == null || c.Ammo <= 0) return -1;
+            int shots = ShotsToCut(c.Color, DeploySlot, c.Ammo);
+            return shots > 0 ? shots - 1 : -1;
+        }
+
+        /// <summary>
+        /// Shots of this color, fired alone from <paramref name="slot"/>, until a piece falls (1-based), looking at most
+        /// <paramref name="maxShots"/> ahead; 0 when no piece falls within that many shots (or the color runs out).
+        /// </summary>
+        public int ShotsToCut(int color, int slot, int maxShots)
+        {
+            if (maxShots <= 0 || Monster.CountOfColor(color) == 0) return 0;
+            if (severMonster != Monster || severEpoch != Monster.Epoch)
+            {
+                severCache.Clear();
+                severMonster = Monster;
+                severEpoch = Monster.Epoch;
+            }
+            int key = color * 64 + slot;
+            if (severCache.TryGetValue(key, out var hit))
+            {
+                if (hit[0] > 0) return hit[0] <= maxShots ? hit[0] : 0;
+                if (hit[1] >= maxShots || hit[2] == 1) return 0;
+            }
+
+            var m = Monster.Clone();
+            float x = SlotX(slot);
+            int cutAt = 0, fired = 0;
+            bool exhausted = false;
+            while (fired < maxShots)
+            {
+                if (!m.PickTarget(color, x, out var target))
+                {
+                    exhausted = true;
+                    break;
+                }
+                fired++;
+                if (m.Remove(target).Count > 0)
+                {
+                    cutAt = fired;
+                    break;
+                }
+            }
+            severCache[key] = new[] { cutAt, fired, exhausted ? 1 : 0 };
+            return cutAt;
         }
 
         /// <summary>Lose when all five slots hold cannons and none of them has anything visible to shoot.</summary>
         void CheckSlotsFull()
         {
             if (IsOver) return;
+            Salvage();
             foreach (var c in Line)
                 if (c == null || Monster.HasVisibleOfColor(c.Color)) return;
             Lose(LoseReason.SlotsFull);
@@ -257,6 +439,7 @@ namespace Titan.Core
         {
             Level = level;
             Monster = MonsterBuilder.Build(level, rng);
+            Monster.Order = Config.TargetOrder;
             Distance = Config.StartDistance;
             stepTimer = 0f;
             ApproachSeconds = Config.ApproachSeconds(level, Monster.Count);

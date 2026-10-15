@@ -37,7 +37,7 @@ namespace Titan.Tests
         [Test]
         public void TargetIsTheHighestVisibleCube()
         {
-            var m = new Monster();
+            var m = new Monster { Order = TargetOrder.HighestFirst };
             for (int y = 0; y < 4; y++) m.Set(new Int3(0, y, 0), 1);
             m.Set(new Int3(3, 2, 0), 1);
             Assert.IsTrue(m.PickTarget(1, 0f, out var t));
@@ -79,10 +79,12 @@ namespace Titan.Tests
             var shoulder = m.Cubes.Where(kv => kv.Key.X == shoulderX).Select(kv => kv.Key).ToList();
             int armCubes = m.Cubes.Count(kv => kv.Key.X > shoulderX);
             Assert.IsNotEmpty(shoulder);
+            Assert.IsTrue(shoulder.All(m.IsJoint), "the shoulder column is the joint");
             var fallen = new List<FallenPiece>();
             foreach (var c in shoulder) fallen.AddRange(m.Remove(c));
             Assert.AreEqual(1, fallen.Count);
             Assert.AreEqual(armCubes, fallen[0].Count);
+            Assert.AreEqual(Monster.RightArm, fallen[0].Part);
         }
 
         [Test]
@@ -161,7 +163,26 @@ namespace Titan.Tests
         [Test]
         public void FiveIdleCannonsEndTheGame()
         {
-            var g = new TitanGame(new TitanConfig(), new SystemRandom(1));
+            // A color that exists but is hidden inside the titan: the cannons wait, nothing to salvage.
+            TitanGame g = null;
+            int hidden = -1;
+            for (int seed = 0; seed < 200 && hidden < 0; seed++)
+            {
+                g = new TitanGame(new TitanConfig(), new SeededRandom((ulong)seed), 1 + seed % 6);
+                hidden = Enumerable.Range(0, MonsterBuilder.MaxColors)
+                    .FirstOrDefault(c => g.Monster.CountOfColor(c) > 0 && !g.Monster.HasVisibleOfColor(c), -1);
+            }
+            Assert.GreaterOrEqual(hidden, 0, "no titan with a hidden-only color in 200 seeds");
+            for (int s = 0; s < g.Line.Length; s++) g.Line[s] = new Cannon(hidden, 10);
+            g.Tick(0.01f);
+            Assert.AreEqual(LoseReason.SlotsFull, g.Lost);
+        }
+
+        [Test]
+        public void FiveDeadCannonsEndTheGameWithoutSalvage()
+        {
+            var g = new TitanGame(new TitanConfig { SalvageEnabled = false }, new SystemRandom(1));
+            Assert.IsFalse(g.SalvageActive);
             int missing = Enumerable.Range(0, MonsterBuilder.MaxColors).First(c => !g.Monster.HasVisibleOfColor(c));
             for (int s = 0; s < g.Line.Length; s++) g.Line[s] = new Cannon(missing, 10);
             g.Tick(0.01f);

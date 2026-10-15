@@ -129,7 +129,7 @@ namespace Titan.Sim
                     appr += g.ApproachSeconds;
                     limbs += m.Cubes.Count(kv => !m.IsAnchored(kv.Key));
                     visible += vis.Sum();
-                    joints += SimRunner.Joints(m).Count;
+                    joints += m.Joints.Count();
                     cannons += g.DeckCount + g.Tray.Count(c => c != null);
                 }
                 Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0,3} {1,5:F0} {2,6:F1} {3,11:F0} {4,14:F2} {5,6:F0} {6,16:F0} {7,16:F2} {8,6:F1} {9,7:F1}",

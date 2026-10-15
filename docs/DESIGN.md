@@ -111,6 +111,31 @@ Titanul pășește spre zid. Jos ai **3 tunuri** (culoare + muniție 10–30). A
 | DeadlockSeconds | — | 1,5 |
 | UseCycles | — | true |
 
+### 4.3.1 Decizii luate la implementare (itemii 2 și 3: Recuperare, Tăieturi câștigate)
+
+**Recuperarea (4.2.2).**
+- Surplusul unei culori se socotește **cu muniția de pe zid inclusă**: surplus = pachet + tavă + zid − cuburi rămase, scos doar din pachet și tavă (cel mult pachet + tavă). Specificația scria „pachet + tavă − cuburi”; cu formula aceea, după o tăietură, fiecare lovitură a unui tun de aceeași culoare de pe zid scotea încă 1 din tavă, cu un „-1” care nu venea din nicio bucată căzută. Cu zidul inclus, toată muniția moartă pleacă o singură dată, odată cu bucata. Invariantul cerut rămâne adevărat (pachet + tavă ≤ cuburi), iar în plus jocul nu rămâne niciodată fără muniție (pachet + tavă + zid ≥ cuburi). Ambele sunt testate după fiecare pas (200 de semințe × 120 s).
+- Recuperarea rulează după o bucată căzută și înaintea fiecărei verificări „locuri pline”, deci după fiecare pas. Un tun de pe zid ajuns la 0 pleacă normal (fără „RECUPERAT +0”). Când ultima bucată golește titanul, nu se face recuperare: muniția de pe zid primește bonusul de doborâre (2/lovitură).
+- Puncte: 5 pe lovitură recuperată de pe zid sau din tavă; recuperarea din pachet e invizibilă și nu dă puncte. Din pachet se scade întâi din tunurile mici, ca să dispară tunuri întregi.
+- `TitanGame.SalvageActive` (= `TitanConfig.SalvageEnabled`, implicit pornit) e poarta pentru reclamele de salvare (11.7).
+
+**Tăieturi câștigate (4.2.3, 6.1).**
+- Etichetele de părți sunt API-ul unic: `PartOf` (0 corp, 1 brațul stâng, 2 brațul drept, 3 capul; 4+ rezervat), `IsJoint`, `OriginalPartSize`, `RemainingPartSize`, `FallenPiece.Part`. **Încheieturile (umerii și gâtul) sunt etichetate „corp”**: rămân pe trunchi când membrul cade, deci o tăietură curată dă exact `OriginalPartSize` cuburi (de folosit la „tăietura curată ≥ 80%”, itemul 7). Etichetele țin de poziție: răspund și pentru un cub deja tras sau căzut.
+- Culorile: brațul nu are culoarea umerilor, a gâtului sau a capului (ordinea alegerii: încheietura umerilor, brațul, gâtul ≠ trunchi și ≠ braț, capul ≠ gât și ≠ braț). Altfel tunul brațului ar fi tăiat singur gâtul sau ar fi desprins ochii. Mâna are culoarea brațului; rândul de jos al brațului e marcat „mănușă” doar pentru vizual (un cub interior de aceeași culoare într-o ramă închisă, aceeași luminozitate).
+- `supportDist` (distanța de la corpul ancorat) nu se recalculează de la zero la fiecare lovitură: `Remove` o actualizează pe loc, recalculând doar cuburile al căror drum cel mai scurt trecea prin cubul scos. Rezultatul e identic cu un BFS complet (test pe 8 niveluri × 120 de scoateri). `PickTarget` nu rulează niciodată BFS-ul dacă nu s-a schimbat nimic. Măsurat: 1000 de apeluri `PickTarget` pe un titan L8 (996 de cuburi) ≈ 13 ms; prima predicție `ShotsToSever` pe L8 ≈ 2 ms (de la 28 ms cu BFS complet), apoi din cache.
+- **TAIE!** = `ShotsToSever(tun)`: indexul (de la 0) loviturii la care cade o bucată, dacă tunul ar fi trimis acum singur, din locul în care ar ajunge (primul loc liber), pe o copie a titanului. Orice bucată contează. Cache pe (culoare, loc, epoca titanului). „taie în N” = `ShotsToCut(culoare, loc, muniția tuturor tunurilor de acea culoare din tavă și de pe zid)`: N lovituri în total, de la 1.
+- Ce rămâne în afara încheieturilor (simulator, Random, 200 de jocuri): 66% din bucăți vin din lovituri pe încheieturi; ~12% sunt ochii care cad când tunul capului mănâncă tot capul din jurul lor (ochiul ascunde cuburile din spatele lui, deci acelea nu pot fi ținte); ~11% sunt membre rupte pentru că s-a mâncat trunchiul de sub umăr sau gât; ~11% sunt resturi de încheieturi rămase după tăietură. Ținta „≥ 60%” e atinsă.
+
+**Măsurat (Tools/Sim, 300 de jocuri/robot, sămânța 1, restul setărilor ca în cod la acel moment):**
+
+| Configurație | Titani Random / Greedy / Smart | Rundă mediană (s) | Bucăți/titan | Din lovituri pe încheieturi | Runde < 20 s | Tunuri moarte pe zid | Tava doar cu tunuri moarte |
+|---|---|---|---|---|---|---|---|
+| Înainte (bucla veche) | 1,89 / 2,07 / 2,42 | 37 / 41 / 56 | 3,8–4,0 | 35–44% | 11–19% | 1,3–1,5 / joc | 3,5–25,5% |
+| + Recuperare (HighestFirst) | 6,38 / 6,92 / 6,68 | 165 / 196 / 179 | 4,0–4,3 | 23–32% | 0% | 0,00 | 0,0% |
+| + Tăieturi câștigate (FarthestFirst, implicit) | 5,91 / 6,29 / 6,20 | 175 / 193 / 187 | 3,09–3,10 | 64–71% | 0% | 0,00 | 0,0% |
+
+Mâna = culoarea brațului e deja inclusă în rândul „+ Recuperare” (constructorul se schimbă o singură dată). Raportul Smart : Random a rămas 1,05×; pierderile sunt încă 100% „locuri pline”. Reglajul (ceasul, tava-bandă, ciclurile) e treaba itemului 4.
+
 ### 4.4 Ce simte jucătorul, într-un titan
 
 0–2 s: titanul apare (banner cu rolul: normal, **TITAN RAPID!**, **TITAN GIGANT!**). 2–10 s: trimiți tunuri pe culorile vizibile, cuburile zboară, sunetul crește în ton cu seria de lovituri. Vezi încheietura galbenă cu „cusătura” albă și un tun galben în tavă cu eticheta **TAIE!**. Decizia: îl trimiți acum (braț întreg, bucată uriașă, recul mare) sau curăți întâi altceva? Tai: o fracțiune de secundă de oprire, camera „lovește”, brațul cade, titanul se clatină înapoi, tunurile albastre devenite inutile zboară cu „RECUPERAT”. Bara de pericol e roșie, se aude bătaia inimii, mai ai două cuburi: **LA MUSTAȚĂ!** Titanul se prăbușește. Următorul.
@@ -365,6 +390,8 @@ Un profil versionat, salvat sigur (fișier temporar + copie în PlayerPrefs): re
 - media titanilor doborâți: Random ≥ 1,4, Smart ≥ 1,8; Smart ≥ Random;
 - pierdere la titanul 1: Random ≤ 30%, Smart ≤ 25%;
 - bucăți per titan între 1 și 8, iar loviturile pe încheietură taie bucăți;
+- Recuperare (itemul 2): 0 tunuri moarte pe zid, 0% timp cu un tun mort pe zid, 0% decizii cu tava doar cu tunuri moarte;
+- Tăieturi câștigate (itemul 3): ≥ 60% din bucăți din lovituri pe încheieturi, 2,5–3,5 bucăți per titan;
 - simularea e deterministă (aceeași sămânță → același rezultat).
 Separat, mereu (și cu `SKIP_BALANCE=1`): codul roboților nu atinge ajutoare sau reclame, `BotView` expune doar numere, `VisibleColorBias` = 0,65 în cod și în toate preseturile.
 

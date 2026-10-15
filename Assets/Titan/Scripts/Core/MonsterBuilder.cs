@@ -23,7 +23,8 @@ namespace Titan.Core
     /// <summary>
     /// Builds a humanoid titan out of boxes: boots, legs, a torso with a hidden core, shoulders, arms, a neck and a head.
     /// Legs and torso are the anchored body. Shoulders and neck are thin joints in their own color:
-    /// shoot them away and the arm or the head breaks off.
+    /// shoot them away and the arm or the head breaks off. Every cube carries a part tag (body, left arm, right arm, head),
+    /// joints are tagged as body, and the arm color never matches the joints or the head.
     /// Every level is bigger, deeper and uses more colors.
     /// </summary>
     public static class MonsterBuilder
@@ -54,6 +55,8 @@ namespace Titan.Core
             int headH = Math.Min(3 + (level - 1) / 3, 6);
             int neckHalf = level >= 6 ? 1 : 0;
 
+            // The arm color never matches a joint (shoulder, neck) or the head: an arm cannon eats its arm from the
+            // hand up and never cuts anything by itself (DESIGN.md 4.2.3). The hand has the arm color.
             int boot = Pick(palette, rng);
             int leg = Pick(palette, rng, boot);
             int torso = Pick(palette, rng, leg);
@@ -61,9 +64,8 @@ namespace Titan.Core
             int belt = Pick(palette, rng, torso);
             int joint = Pick(palette, rng, torso);
             int arm = Pick(palette, rng, joint);
-            int hand = Pick(palette, rng, arm);
-            int neck = Pick(palette, rng, torso);
-            int head = Pick(palette, rng, neck);
+            int neck = Pick(palette, rng, torso, arm);
+            int head = Pick(palette, rng, neck, arm);
             int eye = Pick(palette, rng, head);
 
             var m = new Monster();
@@ -88,22 +90,28 @@ namespace Titan.Core
                     for (int z = 0; z < depth; z++)
                         m.Set(new Int3(x, y, z), z == 0 ? (y == beltY ? belt : torso) : core, true);
 
-            // Shoulders (the only link between torso and arm) and arms hanging down, hands at the bottom.
+            // Shoulders (the only link between torso and arm, tagged as body joints) and arms hanging down.
+            // The bottom row of each arm is the hand: same color, marked as a glove for the view's shape cue.
             for (int side = -1; side <= 1; side += 2)
             {
-                for (int z = 0; z < depth; z++) m.Set(new Int3(side * (half + 1), torsoTop, z), joint);
+                int armPart = side < 0 ? Monster.LeftArm : Monster.RightArm;
+                for (int z = 0; z < depth; z++) m.Set(new Int3(side * (half + 1), torsoTop, z), joint, false, Monster.Body, true);
                 int armBottom = torsoTop - armH + 1;
                 for (int y = armBottom; y <= torsoTop; y++)
                     for (int i = 0; i < armW; i++)
                         for (int z = 0; z < depth; z++)
-                            m.Set(new Int3(side * (half + 2 + i), y, z), y == armBottom ? hand : arm);
+                        {
+                            var c = new Int3(side * (half + 2 + i), y, z);
+                            m.Set(c, arm, false, armPart);
+                            if (y == armBottom) m.MarkGlove(c);
+                        }
             }
 
-            // Neck (the only link to the head) and the head with two eyes on its face.
+            // Neck (the only link to the head, tagged as body joints) and the head with two eyes on its face.
             int neckY = torsoTop + 1;
             for (int x = -neckHalf; x <= neckHalf; x++)
                 for (int z = 0; z < depth; z++)
-                    m.Set(new Int3(x, neckY, z), neck);
+                    m.Set(new Int3(x, neckY, z), neck, false, Monster.Body, true);
             int headBottom = neckY + 1;
             int headTop = headBottom + headH - 1;
             for (int y = headBottom; y <= headTop; y++)
@@ -111,19 +119,24 @@ namespace Titan.Core
                     for (int z = 0; z < depth; z++)
                     {
                         bool isEye = z == 0 && y == headTop - 1 && Math.Abs(x) == Math.Max(1, headHalf - 1);
-                        m.Set(new Int3(x, y, z), isEye ? eye : head);
+                        m.Set(new Int3(x, y, z), isEye ? eye : head, false, Monster.Head);
                     }
 
             return m;
         }
 
-        static int Pick(List<int> palette, IRandom rng, int avoid = -1)
+        /// <summary>A random palette color that is none of <paramref name="avoid"/>; the last avoid is dropped first if that is impossible.</summary>
+        static int Pick(List<int> palette, IRandom rng, params int[] avoid)
         {
-            if (palette.Count == 1) return palette[0];
-            int c;
-            do c = palette[rng.Range(0, palette.Count)];
-            while (c == avoid);
-            return c;
+            for (int keep = avoid.Length; keep >= 0; keep--)
+            {
+                var options = new List<int>();
+                foreach (var c in palette)
+                    if (Array.IndexOf(avoid, c, 0, keep) < 0) options.Add(c);
+                if (options.Count == 0) continue;
+                return options.Count == 1 ? options[0] : options[rng.Range(0, options.Count)];
+            }
+            return palette[0];
         }
 
         static void Shuffle<T>(List<T> list, IRandom rng)

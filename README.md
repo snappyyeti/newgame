@@ -16,16 +16,19 @@ Control: atingi / dai click pe un tun de jos.
 1. **Titanul.** Pășește spre zid; ajunge la el în 60–70 s la primul titan. Bara de sus arată cât de aproape e.
 2. **Tunurile.** Jos ai 3 tunuri, fiecare cu o culoare și o muniție (numărul de pe el). Când le-ai folosit pe toate 3, vin alte 3 (ca la Block Blast).
 3. **Linia de tragere.** Atingi un tun și el urcă pe zid, în primul din cele **5 locuri**. Trage singur, cam 3 lovituri pe secundă, în cuburile **vizibile** de culoarea lui, până rămâne fără muniție. Atunci pleacă și eliberează locul.
-4. **Așteptarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui.
-5. **Combo.** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul au culoarea lor. Dacă le distrugi, bucata se rupe, cade cu fizică și toate cuburile din ea îți dau puncte.
+4. **Așteptarea și Recuperarea.** Un tun fără cuburi vizibile de culoarea lui stă în locul lui și așteaptă (scrie „zzz”). Începe să tragă singur când apare culoarea lui. „zzz” înseamnă mereu că mai există cuburi de culoarea lui, ascunse în spate. Când cade o bucată, muniția care nu mai are ce lovi pleacă odată cu ea: un tun de pe zid a cărui culoare a dispărut de tot zboară de pe zid cu **„RECUPERAT +puncte”**; din tunurile din tavă se scade muniția în plus (un „-N” zboară din bucată spre tun și numărul scade sub ochii tăi; un tun ajuns la 0 dispare); din pachet se scade pe nevăzute. Pe zid nu rămâne niciodată un tun mort.
+5. **Tăieturile (combo).** Brațele stau pe umeri, iar capul pe gât. Umerii și gâtul sunt **încheieturile**: au culoarea lor și o dungă albă („cusătura”). Brațele și capul nu cad singure: tunul de culoarea brațului îl „mănâncă” de la mână spre umăr, fără să-l rupă. Bucata se rupe doar când distrugi încheietura (sau corpul de sub ea), cade cu fizică și toate cuburile din ea îți dau puncte. Mâna are culoarea brațului (o recunoști după rama închisă). Eticheta galbenă **TAIE!** apare deasupra unui tun din tavă doar dacă muniția **lui**, trimis acum, ajunge să rupă o bucată (jocul simulează țintirea pe o copie a titanului, deci eticheta nu minte). Dacă tunul singur nu ajunge, dar mai ai pe zid sau în tavă alt tun de aceeași culoare, apare un contur gol „taie în N” (N = câte lovituri de culoarea asta mai trebuie).
 6. **Pierzi** când titanul atinge zidul sau când toate cele 5 locuri sunt pline cu tunuri care n-au în ce trage.
 
-**Scor:** 10 puncte pe cub lovit, 25 pe fiecare cub dintr-o bucată ruptă, 200 × numărul titanului când îl dobori, plus 2 pe fiecare lovitură rămasă în tunuri.
+**Scor:** 10 puncte pe cub lovit, 25 pe fiecare cub dintr-o bucată ruptă, 5 pe fiecare lovitură recuperată (de pe zid sau din tavă), 200 × numărul titanului când îl dobori, plus 2 pe fiecare lovitură rămasă în tunuri.
 
 ### Alegeri făcute pentru prototip
 
 - **„Vizibil”** = cubul din față al fiecărei coloane (ce vezi tu). Când îl spargi, se vede cel din spate, care poate avea altă culoare. Trunchiul are o culoare ascunsă înăuntru.
-- **Ordinea țintelor:** fiecare tun trage întâi în cel mai înalt cub vizibil de culoarea lui, apoi în cel mai apropiat de el.
+- **Ordinea țintelor:** fiecare tun trage în cubul vizibil de culoarea lui cel mai **depărtat de corp** (câți pași de la cub la cub îl despart de picioare și trunchi), apoi în cel mai înalt, apoi în cel mai apropiat de el. Așa brațele și capul se mănâncă de la vârf spre încheietură. (Vechea ordine, „cel mai înalt întâi”, rămâne în cod ca `TargetOrder.HighestFirst`, doar pentru comparații.)
+- **Culorile titanului:** brațul nu are niciodată culoarea umerilor, a gâtului sau a capului, ca tunul brațului să nu poată rupe nimic singur.
+- **Recuperarea** socotește întâi muniția deja pusă pe zid: ce trimiți pe zid acoperă primele cuburi ale culorii, iar din tavă și din pachet pleacă doar ce rămâne în plus. Din pachet se scade întâi din tunurile cele mai mici. Muniția recuperată din pachet nu dă puncte (nu o vezi).
+- **Ochii** sunt doar pe fața capului. Dacă un tun de culoarea capului mănâncă tot capul din jurul lor, ochii (cu cuburile ascunse în spatele lor) cad ca o bucată mică.
 - **Ce se rupe:** corpul și picioarele stau pe pământ chiar dacă sunt ciuruite. Se rup doar brațele și capul. Altfel, tunul de culoarea picioarelor tăia șoldurile și cădea tot titanul în câteva secunde.
 - **Muniția** fiecărui titan acoperă exact cuburile lui, împărțită în tunuri de 10–30. În 65% din cazuri, tunul nou are o culoare care se vede acum, iar în rest e la întâmplare. Nu există alt „regizor”.
 

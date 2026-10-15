@@ -85,6 +85,29 @@ namespace Titan.Tests
             }
         }
 
+        /// <summary>CORE-1 (salvage): no line cannon is ever left with a vanished color, the tray never offers only dead cannons.</summary>
+        [Test]
+        public void SalvageLeavesNoDeadCannons()
+        {
+            foreach (var s in summaries.Values)
+            {
+                Assert.AreEqual(0.0, s.StrandedPerGame, s.Bot + " stranded line cannons per game");
+                Assert.AreEqual(0.0, s.DeadParkedShare, s.Bot + " time with a dead cannon parked on the line");
+                Assert.AreEqual(0.0, s.OnlyDeadTrayShare, s.Bot + " decisions where every tray cannon is dead");
+            }
+        }
+
+        /// <summary>CORE-2 (earned cuts): most pieces come from a joint shot, about three pieces per titan.</summary>
+        [Test]
+        public void CutsAreEarnedAtTheJoints()
+        {
+            foreach (var s in summaries.Values)
+            {
+                Assert.GreaterOrEqual(s.JointPieceShare, 0.60, s.Bot + " share of pieces cut by a joint shot");
+                Assert.That(s.PiecesPerTitan, Is.InRange(2.5, 3.5), s.Bot + " pieces per titan");
+            }
+        }
+
         [Test]
         public void SimulationIsDeterministic()
         {
