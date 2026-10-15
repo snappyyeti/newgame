@@ -77,7 +77,8 @@ namespace Titan.Game
             public int MaxLine;
         }
 
-        sealed class PopupText
+        /// <summary>A small popup (salvage): a struct in a reused list, so showing one allocates nothing (FEEL-1).</summary>
+        struct PopupText
         {
             public Vector3 World;
             public string Text;
@@ -120,6 +121,7 @@ namespace Titan.Game
 
             fx = gameObject.AddComponent<Fx>();
             fx.Init(cam);
+            InitFeel();
 
             // The profile: file, then the PlayerPrefs mirror, then a new one (which migrates the old best and settings).
             store = UnityProfileStore.Open();
@@ -129,11 +131,14 @@ namespace Titan.Game
             foreach (int source in corrupt) telemetry.Track(Telemetry.SaveCorrupt, source);
             int today = DayClock.StartSession(profile, System.DateTime.Now, out int daysSinceLast, out _);
             telemetry.Track(Telemetry.SessionStart, today, daysSinceLast);
+            // Sound, language (RO/EN, default from the phone) and cube patterns follow the settings from here on
+            // (before any text is made: the daily's launch message below is in the player's language).
+            Settings.Changed += OnSettingsChanged;
+            Settings.Bind(profile.settings, SaveProfile);
             // Before any UI: the daily roll (an unfinished attempt of an earlier day is finalized) and the streak.
             daily = new DailyChallenge(profile, telemetry);
             daily.OnLaunch(today);
             hints = new FtueHints(profile, telemetry);
-            Settings.Bind(profile.settings, SaveProfile);
             SaveProfile();
             StartDailyPick();
             InitAds();
@@ -165,6 +170,9 @@ namespace Titan.Game
             restartPending = restart;
             screen = UiScreen.Play;
             quitConfirm = false;
+            paused = false;
+            pauseConfirmNewGame = false;
+            warp.Cancel(Time.unscaledTime);
             // The install's first runs meet the scripted tutorial titan first (FTUE-1).
             if (start.Mode == Telemetry.ModeEndless && start.Titan == 1 && start.Plan == null) start.Plan = Ftue.PlanFor(profile);
 
@@ -179,6 +187,8 @@ namespace Titan.Game
             lastScore = start.Score;
             scorePunch = 0f;
             popups.Clear();
+            RecyclePopup(bigPopup);
+            RecyclePopup(queuedPopup);
             bigPopup = queuedPopup = null;
             bannerQueue.Clear();
             banner = null;
@@ -194,13 +204,24 @@ namespace Titan.Game
             if (profile != null) store.Save(profile);
         }
 
-        void OnApplicationPause(bool paused)
+        void OnApplicationPause(bool background)
         {
-            if (paused) SaveProfile();
-            OnAdsAppPause(paused);
+            if (background)
+            {
+                PauseRun(); // auto-pause: on return the titan has not moved, and only "Continuă" resumes
+                SaveProfile();
+            }
+            OnAdsAppPause(background);
         }
 
         void OnApplicationQuit() => SaveProfile();
+
+        void OnDestroy()
+        {
+            Settings.Changed -= OnSettingsChanged;
+            Time.timeScale = 1f;
+            AudioListener.pause = false;
+        }
 
         void Update()
         {
@@ -217,11 +238,18 @@ namespace Titan.Game
             }
             CheckLogExport();
             UpdateDailyClock();
-            if (game == null || screen != UiScreen.Play) return;
+            UpdateDevTools();
+            MonitorFreeze();
+            if (game == null || screen != UiScreen.Play)
+            {
+                ApplyTimeScale();
+                return;
+            }
 
             // Ad cards and ads first: while one is up (the pause contract) the run does not tick and the tray takes no taps.
             UpdateAds(Time.unscaledDeltaTime);
-            bool frozen = PlayFrozen || quitConfirm;
+            // The pause menu freezes the run the same way (UX-1).
+            bool frozen = PlayFrozen || quitConfirm || paused;
             if (!game.IsOver && !frozen)
             {
                 if (TryGetTap(out var tap)) HandleTap(tap);
@@ -234,7 +262,7 @@ namespace Titan.Game
             if (game.Events.Count > 0) PlayEvents(); // also the Revived event of a revive granted from a card
             if ((session.Update(frozen ? 0f : Time.unscaledDeltaTime) & SessionSignal.NewRecord) != 0)
             {
-                ShowBanner("RECORD NOU!", ArenaView.BannerGold, 1.5f);
+                ShowBanner(Loc.T("hud.recordNew"), ArenaView.BannerGold, 1.5f);
                 fx.RecordFanfare();
                 Confetti();
             }
@@ -255,6 +283,7 @@ namespace Titan.Game
             shownScore = Mathf.MoveTowards(shownScore, game.Score, Mathf.Max(30f, (game.Score - shownScore) * 6f) * Time.deltaTime);
             scorePunch = Mathf.MoveTowards(scorePunch, 0f, Time.deltaTime * 3f);
             UpdateConfetti(Time.unscaledDeltaTime);
+            ApplyTimeScale();
         }
 
         void HandleTap(Vector2 screen)
@@ -267,11 +296,11 @@ namespace Titan.Game
             {
                 case DeployBlockReason.WouldJam:
                     view.ShakeTray(i);
-                    ShowBanner("Ar bloca ultimul loc! Alege o culoare vizibilă.", ArenaView.BannerGold, 1.6f);
+                    ShowBanner(Loc.T("hud.wouldJam"), ArenaView.BannerGold, 1.6f);
                     break;
                 case DeployBlockReason.LineFull:
                     view.ShakeTray(i);
-                    ShowBanner("Toate cele " + game.ActiveSlots + " locuri sunt ocupate!", Color.white, 2f);
+                    ShowBanner(Loc.T("hud.lineFull", game.ActiveSlots), Color.white, 2f);
                     break;
             }
         }
@@ -286,14 +315,19 @@ namespace Titan.Game
                 TrackAdEvent(e);
                 hints.OnEvent(e);
                 if (session.IsDaily && daily.Process(e)) dailySave = true;
-                if (e.Kind == EventKind.TitanDefeated) DefeatBanner(e);
+                if (e.Kind == EventKind.TitanDefeated)
+                {
+                    DefeatBanner(e);
+                    DefeatJuice(e);
+                }
+                if (e.Kind == EventKind.GameOver) warp.Cancel(Time.unscaledTime); // the time scale is back to 1 at a game over
                 // A revivable loss waits for the "A doua suflare" card: the session hears about it only if the run really ends.
                 if (e.Kind == EventKind.GameOver && OfferSecondWind(e)) continue;
                 var signal = session.Process(e);
-                if ((signal & SessionSignal.NewFurthestTitan) != 0) QueueBanner("TITAN NOU: #" + e.Level, ArenaView.BannerGold, 1.4f);
+                if ((signal & SessionSignal.NewFurthestTitan) != 0) QueueBanner(Loc.T("hud.titanNew", e.Level), ArenaView.BannerGold, 1.4f);
                 if ((signal & SessionSignal.CheckpointSaved) != 0)
                 {
-                    toast = "Punct de salvare: titanul #" + e.Level;
+                    toast = Loc.T("hud.checkpoint", e.Level);
                     toastUntil = Time.time + 1.2f;
                 }
                 signals |= signal;
@@ -307,9 +341,9 @@ namespace Titan.Game
         void DefeatBanner(GameEvent e)
         {
             if (e.NearMiss)
-                QueueBanner("LA MUSTAȚĂ!  x" + cfg.NearMissBonusMult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "  +" + HudText.Num(e.Points),
+                QueueBanner(Loc.T("hud.nearMiss", cfg.NearMissBonusMult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), HudText.Num(e.Points)),
                     ArenaView.BannerGold, 2.2f, e.Stars, e.MaxLine);
-            else QueueBanner("TITAN DOBORÂT!  +" + HudText.Num(e.Points), ArenaView.BannerWhite, 2.2f, e.Stars, e.MaxLine);
+            else QueueBanner(Loc.T("hud.defeated", HudText.Num(e.Points)), ArenaView.BannerWhite, 2.2f, e.Stars, e.MaxLine);
         }
 
         int FrameP95()
@@ -380,7 +414,7 @@ namespace Titan.Game
             }
             if (!export) return;
             GUIUtility.systemCopyBuffer = UnityProfileStore.LogJson(profile);
-            ShowBanner("Jurnal copiat", Color.white, 1.2f);
+            ShowBanner(Loc.T("hud.logCopied"), Color.white, 1.2f);
 #endif
         }
 
@@ -455,6 +489,7 @@ namespace Titan.Game
         void OnGUI()
         {
             EnsureStyles();
+            Language.CheckFontOnce();
             float s = styleScale;
             float w = Screen.width;
             if (screen == UiScreen.Menu)
@@ -488,21 +523,22 @@ namespace Titan.Game
                 Shadowed(new Rect(0, top + 76 * s, w, 22 * s), HudText.PbMarker(game.Score, session.BestAtStart), under);
             }
             else if (session.IsDaily)
-                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), session.Start.Mode == Telemetry.ModeDailyPractice ? DailyText.Practice : "Încercarea oficială", under);
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), session.Start.Mode == Telemetry.ModeDailyPractice ? DailyText.Practice : Loc.T("hud.officialAttempt"), under);
             else if (session.BestAtStart > 0 || game.Score > 0)
-                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record " + HudText.Num(Mathf.Max(session.BestAtStart, game.Score)), under);
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), Loc.T("hud.record", HudText.Num(Mathf.Max(session.BestAtStart, game.Score))), under);
             else if (profile.legacyBest > 0)
-                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), "Record vechi (alt punctaj): " + HudText.Num(profile.legacyBest), under);
-            ChainArc(new Vector2(w / 2f + 150 * s, scoreRect.center.y), s);
+                Shadowed(new Rect(0, top + 76 * s, w, 22 * s), Loc.T("hud.recordLegacy", HudText.Num(profile.legacyBest)), under);
+            // Right of the score, clear of the pause button (top-right) at 9:16 to 9:21 (UX-1 layout check).
+            ChainArc(new Vector2(w / 2f + 128 * s, scoreRect.center.y), s);
             if (session.IsDaily)
             {
-                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), DailyText.Title + " #" + session.Start.Day + " · Titanul " + game.Level + "/" + Daily.Titans, small);
+                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), Loc.T("hud.dailyLine", DailyText.Title, session.Start.Day, game.Level, Daily.Titans), small);
                 DailySquares(new Vector2(w / 2f, top + 136 * s), game.TitansDefeated + game.StartTitan - 1, game.IsOver && game.Lost != LoseReason.Completed ? game.Level : 0, s, game.IsOver ? 0 : game.Level);
             }
             else
             {
                 int cycle = TitanConfig.CycleIndex(game.Level);
-                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), "Ciclul " + (cycle + 1) + " · Titanul #" + game.Level, small);
+                Shadowed(new Rect(0, top + 98 * s, w, 26 * s), Loc.T("hud.cycleLine", cycle + 1, game.Level), small);
                 CycleDots(new Vector2(w / 2f, top + 136 * s), TitanConfig.CyclePosition(game.Level), s);
             }
 
@@ -514,13 +550,15 @@ namespace Titan.Game
             GUI.color = Color.Lerp(new Color(0.3f, 0.85f, 0.35f), new Color(1f, 0.2f, 0.15f), danger) * new Color(1, 1, 1, pulse);
             GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * danger, bar.height), white);
             GUI.color = Color.white;
-            Shadowed(new Rect(bar.xMax - 80 * s, bar.yMax, 80 * s, 22 * s), "ZIDUL", new GUIStyle(small) { alignment = TextAnchor.UpperRight, fontSize = Mathf.RoundToInt(14 * s) });
+            Shadowed(new Rect(bar.xMax - 80 * s, bar.yMax, 80 * s, 22 * s), Loc.T("hud.wall"), new GUIStyle(small) { alignment = TextAnchor.UpperRight, fontSize = Mathf.RoundToInt(14 * s) });
             if (!game.IsOver) LiveStars(new Vector2(bar.x, bar.yMax + 4 * s), s);
-            if (hiddenColors > 0) HiddenChip(new Vector2(w / 2f, bar.yMax + 6 * s), hiddenColors, s);
+            if (hiddenColors > 0) HiddenChip(new Vector2(w / 2f, bar.yMax + 6 * s), hiddenColors, s, bar.x + 3 * 20 * s + 6 * s, bar.xMax - 84 * s);
 
             if (!game.IsOver) SlotPips(s);
 
-            // Ammo on every cannon. Tray labels count down visibly when salvage takes dead ammo away.
+            // Ammo on every cannon, with the color's symbol (UX-1). Tray tags hang under the cannon (clear of the slot
+            // pips); they count down visibly when salvage takes dead ammo away.
+            float trayTagW = 76 * s;
             for (int i = 0; i < game.Tray.Length; i++)
             {
                 var c = game.Tray[i];
@@ -531,14 +569,16 @@ namespace Titan.Game
                     GUI.color = new Color(0.08f, 0.08f, 0.1f, 0.8f);
                     GUI.DrawTexture(r, white);
                     GUI.color = Color.white;
-                    Shadowed(r, "pachet gol", new GUIStyle(small) { fontSize = Mathf.RoundToInt(15 * s) });
+                    Shadowed(r, Loc.T("hud.emptyDeck"), new GUIStyle(small) { fontSize = Mathf.RoundToInt(15 * s) });
                 }
+                var tag = view.TrayTag(i);
+                if (c != null && tag.HasValue) AmmoTag(new Rect(tag.Value.x - trayTagW / 2f, tag.Value.y, trayTagW, 30 * s), c.Color, view.TrayAmmoShown(i, c.Ammo), TagState.Ready, s);
                 var pos = view.TrayLabel(i);
-                if (c == null || !pos.HasValue) continue;
-                AmmoTag(pos.Value, c.Color, view.TrayAmmoShown(i, c.Ammo), TagState.Ready, s);
-                if (!game.IsOver) CutTag(pos.Value, c, i, s);
+                if (c != null && pos.HasValue && !game.IsOver) CutTag(pos.Value, c, i, s);
             }
-            view.ForEachDyingTrayTag((pos, color, ammo) => AmmoTag(pos, color, ammo, TagState.Ready, s));
+            view.ForEachDyingTrayTag((pos, color, ammo) => AmmoTag(new Rect(pos.x - trayTagW / 2f, pos.y, trayTagW, 30 * s), color, ammo, TagState.Ready, s));
+            // Line tags are never wider than the slot spacing on screen (neighbours do not overlap on tall phones).
+            float lineTagW = Mathf.Min(64 * s, view.LineSlotSpacing() - 4 * s);
             for (int i = 0; i < game.ActiveSlots; i++)
             {
                 var c = game.Line[i];
@@ -547,7 +587,7 @@ namespace Titan.Game
                 // "zzz" only for a color that still exists (hidden for now). With salvage a vanished color never stays on the wall.
                 var state = game.Monster.HasVisibleOfColor(c.Color) ? TagState.Ready
                     : game.Monster.CountOfColor(c.Color) > 0 ? TagState.Waiting : TagState.Dead;
-                AmmoTag(pos.Value, c.Color, c.Ammo, state, s);
+                AmmoTag(new Rect(pos.Value.x - lineTagW / 2f, pos.Value.y - 34 * s, lineTagW, 30 * s), c.Color, c.Ammo, state, s);
             }
             view.ForEachFlyLabel((pos, color, text, alpha) =>
             {
@@ -555,7 +595,7 @@ namespace Titan.Game
                 GUI.color = new Color(0, 0, 0, 0.55f * alpha);
                 GUI.DrawTexture(r, white);
                 var style = new GUIStyle(label);
-                style.normal.textColor = Color.Lerp(ArenaView.Palette[color % ArenaView.Palette.Length], Color.white, 0.25f) * new Color(1, 1, 1, alpha);
+                style.normal.textColor = Color.Lerp(ColorStyle.Shown(color), Color.white, 0.25f) * new Color(1, 1, 1, alpha);
                 GUI.color = Color.white;
                 GUI.Label(r, text, style);
             });
@@ -589,11 +629,15 @@ namespace Titan.Game
             DrawBigPopup(s);
             DrawConfetti(s);
             if (!game.IsOver) DrawHints(s);
+            DrawPerfOverlay(s);
             if (session.IsDaily && !game.IsOver)
             {
                 DrawDailyRunControls(w, s);
                 if (session == null) return; // left for the daily panel ("Înapoi", "Ieși", "Da, închei")
             }
+            DrawPauseButton(s);
+            DrawPauseMenu(w, s);
+            if (session == null || game == null) return;
 
             // A held game over shows the revive card instead of the results; a daily run shows its own panel.
             if (game.IsOver && pendingGameOver == null)
@@ -606,15 +650,38 @@ namespace Titan.Game
 
         enum TagState { Ready, Waiting, Dead }
 
-        void AmmoTag(Vector2 at, int color, int ammo, TagState state, float s)
+        GUIStyle tagStyle;
+
+        /// <summary>
+        /// An ammo tag: the cannon's color, its symbol at the left (a procedural texture; with "Simboluri culori" on)
+        /// and the ammo. Waiting cannons are grey with "zzz" and still show their symbol, so the color can be told
+        /// in greyscale too.
+        /// </summary>
+        void AmmoTag(Rect r, int color, int ammo, TagState state, float s)
         {
-            var r = new Rect(at.x - 32 * s, at.y - 34 * s, 64 * s, 30 * s);
-            GUI.color = state == TagState.Ready ? ArenaView.Palette[color % ArenaView.Palette.Length]
+            GUI.color = state == TagState.Ready ? ColorStyle.Shown(color)
                 : state == TagState.Waiting ? new Color(0.25f, 0.25f, 0.28f, 0.85f) : new Color(0.12f, 0.12f, 0.14f, 0.85f);
             GUI.DrawTexture(r, white);
+            var text = r;
+            if (Settings.ColorSymbols)
+            {
+                float icon = Mathf.Min(r.height * 0.72f, r.width * 0.38f);
+                var ir = new Rect(r.x + 3 * s, r.center.y - icon / 2f, icon, icon);
+                GUI.color = state == TagState.Ready ? new Color(0f, 0f, 0f, 0.7f) : new Color(1f, 1f, 1f, 0.8f);
+                GUI.DrawTexture(ir, Glyphs.Symbol(color));
+                text = new Rect(ir.xMax, r.y, r.xMax - ir.xMax, r.height);
+            }
             GUI.color = Color.white;
-            Shadowed(r, state == TagState.Waiting ? ammo + " zzz" : ammo.ToString(), label);
+            int size = Mathf.RoundToInt(Mathf.Min(24 * s, text.width * 0.5f + 6 * s));
+            if (tagStyle == null || tagStyle.fontSize != size) tagStyle = new GUIStyle(label) { fontSize = size, clipping = TextClipping.Overflow };
+            Shadowed(text, ammo.ToString(), tagStyle);
+            if (state != TagState.Waiting) return;
+            // "zzz" sits on top of the tag (small), so a narrow line tag never spills into its neighbours.
+            if (zzzStyle == null || zzzStyle.fontSize != Mathf.RoundToInt(14 * s)) zzzStyle = new GUIStyle(small) { fontSize = Mathf.RoundToInt(14 * s), clipping = TextClipping.Overflow };
+            Shadowed(new Rect(r.x, r.y - 16 * s, r.width, 16 * s), Loc.T("hud.zzz"), zzzStyle);
         }
+
+        GUIStyle zzzStyle;
 
         GUIStyle cutStyle;
 
@@ -636,7 +703,7 @@ namespace Titan.Game
                 GUI.DrawTexture(r, white);
                 GUI.color = Color.white;
                 cutStyle.normal.textColor = new Color(0.1f, 0.08f, 0f, alpha);
-                GUI.Label(r, "TAIE!", cutStyle);
+                GUI.Label(r, Loc.T("hud.cut"), cutStyle);
                 return;
             }
             if (!game.Monster.HasVisibleJointOfColor(c.Color)) return;
@@ -656,7 +723,7 @@ namespace Titan.Game
             GUI.DrawTexture(new Rect(r.xMax - t, r.y, t, r.height), white);
             GUI.color = Color.white;
             cutStyle.normal.textColor = yellow;
-            GUI.Label(r, "taie în " + shots, cutStyle);
+            GUI.Label(r, Loc.T("hud.cutIn", shots), cutStyle);
         }
 
         /// <summary>
@@ -705,17 +772,38 @@ namespace Titan.Game
             GUI.color = Color.white;
         }
 
-        /// <summary>"{k} culori ascunse ?": colors that exist only inside the titan right now.</summary>
-        void HiddenChip(Vector2 topCenter, int k, float s)
+        /// <summary>
+        /// "{k} culori ascunse ?": colors that exist only inside the titan right now. With "Simboluri culori" on it reads
+        /// "ascunse:" followed by the hidden colors' symbols in their colors (the symbols count them), so the chip stays
+        /// one short row between the live stars and the "ZIDUL" label at 9:16 to 9:21 (UX-1 layout check).
+        /// </summary>
+        void HiddenChip(Vector2 topCenter, int k, float s, float minX, float maxX)
         {
-            string text = k == 1 ? "1 culoare ascunsă ?" : k + " culori ascunse ?";
+            bool symbols = Settings.ColorSymbols;
+            string text = symbols ? Loc.T("hud.hiddenShort") : k == 1 ? Loc.T("hud.hiddenOne") : Loc.T("hud.hiddenMany", k);
             var style = new GUIStyle(small) { fontSize = Mathf.RoundToInt(15 * s) };
-            float width = style.CalcSize(new GUIContent(text)).x + 20 * s;
+            float icon = 14 * s, iconGap = 2 * s;
+            float textW = style.CalcSize(new GUIContent(text)).x;
+            float width = textW + 20 * s + (symbols ? 4 * s + k * (icon + iconGap) : 0f);
             var r = new Rect(topCenter.x - width / 2f, topCenter.y, width, 24 * s);
+            if (r.xMax > maxX) r.x = maxX - r.width;
+            if (r.x < minX) r.x = minX;
             GUI.color = new Color(0.1f, 0.1f, 0.14f, 0.75f);
             GUI.DrawTexture(r, white);
             GUI.color = Color.white;
-            Shadowed(r, text, style);
+            Shadowed(new Rect(r.x + 10 * s, r.y, textW, r.height), text, style);
+            if (!symbols) return;
+            float x = r.x + 10 * s + textW + 4 * s;
+            for (int c = 0; c < ColorStyleTable.Count; c++)
+            {
+                if (game.Monster.CountOfColor(c) == 0 || game.Monster.HasVisibleOfColor(c)) continue;
+                GUI.color = new Color(0f, 0f, 0f, 0.6f);
+                GUI.DrawTexture(new Rect(x + 1, r.center.y - icon / 2f + 1, icon, icon), Glyphs.Symbol(c));
+                GUI.color = ColorStyle.Shown(c);
+                GUI.DrawTexture(new Rect(x, r.center.y - icon / 2f, icon, icon), Glyphs.Symbol(c));
+                x += icon + iconGap;
+            }
+            GUI.color = Color.white;
         }
 
         /// <summary>
@@ -746,7 +834,7 @@ namespace Titan.Game
                 var c = game.Line[i];
                 if (c != null)
                 {
-                    GUI.color = firing[i] ? ArenaView.Palette[c.Color % ArenaView.Palette.Length] : new Color(0.35f, 0.35f, 0.35f);
+                    GUI.color = firing[i] ? ColorStyle.Shown(c.Color) : new Color(0.35f, 0.35f, 0.35f);
                     GUI.DrawTexture(r, white);
                     if (firing[i])
                     {
@@ -757,7 +845,7 @@ namespace Titan.Game
                     else
                     {
                         GUI.color = Color.white;
-                        GUI.Label(r, "zzz", zzz);
+                        GUI.Label(r, Loc.T("hud.zzz"), zzz);
                     }
                 }
                 GUI.color = border;

@@ -224,6 +224,9 @@ namespace Titan.Core
         public const string ShieldUsed = "shield_used";     // (gap, shields left)
         public const string ShareTap = "share_tap";         // (day, 0)
 
+        /// <summary>run_end / run_length reason of a run left from the pause menu ("Joc nou", UX-1); the others are LoseReason values.</summary>
+        public const int ReasonAbandoned = 99;
+
         /// <summary>run_start modes.</summary>
         public const int ModeEndless = 0, ModeDailyOfficial = 1, ModeDailyPractice = 2, ModeCheckpoint = 3;
 

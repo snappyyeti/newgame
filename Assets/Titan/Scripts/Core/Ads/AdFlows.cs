@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace Titan.Core.Ads
 {
@@ -374,46 +375,48 @@ namespace Titan.Core.Ads
         }
     }
 
-    /// <summary>The player-facing ad texts (Romanian; UX-1 moves them into the RO/EN table). Pure, unit tested.</summary>
+    /// <summary>The player-facing ad texts (from the RO/EN table, <see cref="Titan.Core.Loc"/>). Pure, unit tested.</summary>
     public static class AdText
     {
-        public const string Tag = "Reclamă";
-        public const string BeforeRunTag = "Reclamă înainte de rundă";
-        public const string InterCard = "Reclamă — Mulțumim că susții jocul gratuit.";
+        public static string Tag => Loc.T("ad.tag");
+        public static string BeforeRunTag => Loc.T("ad.beforeRun");
+        public static string InterCard => Loc.T("ad.interCard");
 
-        public const string ReviveTitle = "A DOUA SUFLARE";
-        public const string ReviveValue = "Tunurile adormite se întorc în pachet, titanul dă înapoi și primești tunuri cu culori vizibile.";
-        public const string ReviveAccept = "Privește reclama și continuă";
-        public const string ReviveAcceptFree = "Revino gratis";
-        public const string Decline = "Nu, mulțumesc";
-        public const string ReviveFooter = "O singură dată pe rundă.";
-        public const string ReviveFallbackToast = "Reclama nu s-a încărcat. Îți dăm revenirea oricum.";
-        public const string NoAdNow = "Nicio reclamă disponibilă acum";
+        public static string ReviveTitle => Loc.T("ad.reviveTitle");
+        public static string ReviveValue => Loc.T("ad.reviveValue");
+        public static string ReviveAccept => Loc.T("ad.reviveAccept");
+        public static string ReviveAcceptFree => Loc.T("ad.reviveAcceptFree");
+        public static string Decline => Loc.T("ad.decline");
+        public static string ReviveFooter => Loc.T("ad.reviveFooter");
+        public static string ReviveFallbackToast => Loc.T("ad.reviveFallback");
+        public static string NoAdNow => Loc.T("ad.noneNow");
+        /// <summary>"Se încarcă reclama" (the card adds its own dots).</summary>
+        public static string Loading => Loc.T("ad.loading");
 
-        public const string ExtraSlotButton = "+1 LOC";
-        public const string ExtraSlotTitle = "+1 LOC PE ZID";
-        public const string ExtraSlotValue = "Un al 6-lea loc pentru tunuri, până dobori acest titan.";
-        public const string ExtraSlotAccept = "Privește reclama";
-        public const string ExtraSlotAcceptFree = "Încearcă gratis";
-        public const string ExtraSlotDecline = "Nu acum";
+        public static string ExtraSlotButton => Loc.T("ad.slotButton");
+        public static string ExtraSlotTitle => Loc.T("ad.slotTitle");
+        public static string ExtraSlotValue => Loc.T("ad.slotValue");
+        public static string ExtraSlotAccept => Loc.T("ad.watch");
+        public static string ExtraSlotAcceptFree => Loc.T("ad.slotAcceptFree");
+        public static string ExtraSlotDecline => Loc.T("ad.slotDecline");
 
-        public const string AdBreakTitle = "PAUZĂ DE RECLAME";
-        public const string AdBreakValue = "Privește o reclamă acum și ai 30 de minute fără reclame între runde. Reclamele opționale (cu recompensă) rămân la alegerea ta.";
-        public const string AdBreakAccept = "Privește reclama";
-        public const string AdBreakLink = "Fără reclame 30 min";
-        public const string AdBreakEnded = "Pauza de reclame s-a încheiat.";
+        public static string AdBreakTitle => Loc.T("ad.breakTitle");
+        public static string AdBreakValue => Loc.T("ad.breakValue");
+        public static string AdBreakAccept => Loc.T("ad.watch");
+        public static string AdBreakLink => Loc.T("ad.breakLink");
+        public static string AdBreakEnded => Loc.T("ad.breakEnded");
 
         /// <summary>"Titanul #5 · 62% distrus · Scor 31.400". No record-gap line (no loss-aversion pressure).</summary>
         public static string ReviveStake(int titan, float progressFraction, int score) =>
-            "Titanul #" + titan + " · " + (int)Math.Floor(100f * Math.Max(0f, Math.Min(1f, progressFraction)) + 1e-4f) + "% distrus · Scor " + HudText.Num(score);
+            Loc.T("ad.reviveStake", titan, (int)Math.Floor(100f * Math.Max(0f, Math.Min(1f, progressFraction)) + 1e-4f), HudText.Num(score));
 
-        public static string ExtraSlotFooter(int helpsLeft) => "Ajutoare rămase în rundă: " + Math.Max(0, helpsLeft);
+        public static string ExtraSlotFooter(int helpsLeft) => Loc.T("ad.slotFooter", Math.Max(0, helpsLeft));
 
         /// <summary>"Fără reclame încă 12:40" (non-interactive while the pass runs).</summary>
         public static string AdBreakRemaining(double seconds)
         {
             int s = (int)Math.Ceiling(Math.Max(0.0, seconds));
-            return "Fără reclame încă " + (s / 60).ToString("00") + ":" + (s % 60).ToString("00");
+            return Loc.T("ad.breakRemaining", (s / 60).ToString("00", CultureInfo.InvariantCulture) + ":" + (s % 60).ToString("00", CultureInfo.InvariantCulture));
         }
     }
 }

@@ -1,18 +1,29 @@
 using System.Collections.Generic;
+using Titan.Core;
 using UnityEngine;
 
 namespace Titan.Game
 {
-    /// <summary>Procedural sounds (no audio files), camera shake and simple cube particles.</summary>
+    /// <summary>
+    /// Procedural sounds (no audio files), camera shake, the FOV punch, haptics and simple pooled cube particles.
+    /// "Efecte reduse" makes <see cref="Shake"/> and <see cref="PunchFov"/> return early; "Vibrații" gates
+    /// <see cref="Haptic"/>; "Sunet" sets the listener volume (FEEL-1, UX-1).
+    /// </summary>
     public sealed class Fx : MonoBehaviour
     {
         AudioSource source;
+        /// <summary>The hit sound only: its pitch follows the firing slot's hit streak (FEEL-1).</summary>
+        AudioSource hitSource;
         AudioSource highSource; // pitch 1.5: salvage reuses the deploy sound, higher
         /// <summary>Round-robin sources for one-shots at another pitch (a source's pitch applies to everything it plays).</summary>
         AudioSource[] pitched;
         int nextPitched;
         AudioClip shot, hit, step, crash, roar, fanfare, lose, deploy, thump;
         float lastShot, lastHit;
+        readonly FeelConfig feel = new FeelConfig();
+        HitStreak hitStreak;
+        HapticGate haptics;
+        float fovBase, fovPunchStart = -10f, fovPunch;
         float nextBeat = -1f;
 
         Camera cam;
@@ -24,20 +35,28 @@ namespace Titan.Game
             public Transform T;
             public Vector3 Velocity;
             public float Life, MaxLife, Size;
+            public MeshRenderer Renderer;
         }
 
         readonly List<Particle> particles = new List<Particle>();
+        /// <summary>Spark cubes are pooled: no GameObject is created per shot once the pool is warm.</summary>
+        readonly Stack<Particle> sparkPool = new Stack<Particle>();
         Mesh cubeMesh;
 
         public void Init(Camera camera)
         {
             cam = camera;
             cameraBase = cam.transform.position;
+            fovBase = cam.fieldOfView;
+            hitStreak = new HitStreak(feel, 8);
+            haptics = new HapticGate(feel);
             source = gameObject.AddComponent<AudioSource>();
             source.playOnAwake = false;
             highSource = gameObject.AddComponent<AudioSource>();
             highSource.playOnAwake = false;
             highSource.pitch = 1.5f;
+            hitSource = gameObject.AddComponent<AudioSource>();
+            hitSource.playOnAwake = false;
             pitched = new AudioSource[4];
             for (int i = 0; i < pitched.Length; i++)
             {
@@ -75,12 +94,45 @@ namespace Titan.Game
             source.PlayOneShot(shot, 0.35f);
         }
 
-        public void Hit()
+        /// <summary>
+        /// A projectile from line slot <paramref name="slot"/> hits: the slot's streak counts every hit (reset after
+        /// 0.5 s without one) and the dedicated hit source plays at min(1.6, 1 + 0.04 × streak).
+        /// </summary>
+        public void Hit(int slot)
         {
+            float pitch = hitStreak.Hit(slot, Time.time);
             if (Time.time - lastHit < 0.04f) return;
             lastHit = Time.time;
-            source.PlayOneShot(hit, 0.45f);
+            hitSource.pitch = pitch;
+            hitSource.PlayOneShot(hit, 0.45f);
         }
+
+        /// <summary>The camera's resting field of view (the FOV punch returns to it; the camera fit uses it).</summary>
+        public float BaseFov => fovBase;
+
+        /// <summary>FOV −3% returning over 0.25 s (unscaled). Returns early under "Efecte reduse".</summary>
+        public void PunchFov()
+        {
+            if (Settings.ReducedFx) return;
+            fovPunchStart = Time.unscaledTime;
+            fovPunch = feel.FovPunch;
+        }
+
+        /// <summary>
+        /// A vibration (phones only): pieces of 40+ cubes, a boss defeat, a near-miss win. At most once per 0.6 s and
+        /// never with "Vibrații" off. Returns whether it fired.
+        /// </summary>
+        public bool Haptic()
+        {
+            if (!haptics.TryFire(Time.unscaledTime, Settings.Haptics)) return false;
+#if UNITY_ANDROID || UNITY_IOS
+            Handheld.Vibrate();
+#endif
+            return true;
+        }
+
+        /// <summary>"Sunet" on or off: the whole mix.</summary>
+        public static void ApplySound() => AudioListener.volume = Settings.Sfx ? 1f : 0f;
 
         public void Deploy() => source.PlayOneShot(deploy, 0.6f);
         /// <summary>A new cannon rises into a tray slot (conveyor): the deploy sound at pitch 1.2, quieter.</summary>
@@ -139,6 +191,10 @@ namespace Titan.Game
             StopAllCoroutines();
             nextBeat = -1f;
             shakeLeft = 0f;
+            fovPunch = 0f;
+            hitStreak.Reset();
+            for (int i = particles.Count - 1; i >= 0; i--) ReturnSpark(particles[i]);
+            particles.Clear();
         }
         public void Lose() { source.PlayOneShot(lose, 0.8f); Shake(0.4f, 0.6f); }
 
@@ -156,10 +212,8 @@ namespace Titan.Game
         {
             for (int i = 0; i < count; i++)
             {
-                var go = new GameObject("Spark");
-                go.AddComponent<MeshFilter>().sharedMesh = cubeMesh;
-                go.AddComponent<MeshRenderer>().sharedMaterial = material;
-                var t = go.transform;
+                var p = TakeSpark(material);
+                var t = p.T;
                 t.position = position;
                 var dir = Random.onUnitSphere;
                 dir.z = -Mathf.Abs(dir.z); // toward the player
@@ -167,8 +221,38 @@ namespace Titan.Game
                 float life = Random.Range(0.35f, 0.6f);
                 float size = Random.Range(0.12f, 0.25f);
                 t.localScale = Vector3.one * size;
-                particles.Add(new Particle { T = t, Velocity = dir.normalized * speed * Random.Range(0.6f, 1.2f), Life = life, MaxLife = life, Size = size });
+                p.Velocity = dir.normalized * speed * Random.Range(0.6f, 1.2f);
+                p.Life = p.MaxLife = life;
+                p.Size = size;
+                particles.Add(p);
             }
+        }
+
+        Particle TakeSpark(Material material)
+        {
+            Particle p;
+            if (sparkPool.Count > 0)
+            {
+                p = sparkPool.Pop();
+                p.T.gameObject.SetActive(true);
+            }
+            else
+            {
+                var go = new GameObject("Spark");
+                go.transform.SetParent(transform, false);
+                go.AddComponent<MeshFilter>().sharedMesh = cubeMesh;
+                go.AddComponent<MeshRenderer>();
+                p = new Particle { T = go.transform, Renderer = go.GetComponent<MeshRenderer>() };
+            }
+            p.Renderer.sharedMaterial = material;
+            return p;
+        }
+
+        void ReturnSpark(Particle p)
+        {
+            if (p.T == null) return;
+            p.T.gameObject.SetActive(false);
+            sparkPool.Push(p);
         }
 
         void Update()
@@ -180,7 +264,7 @@ namespace Titan.Game
                 p.Life -= dt;
                 if (p.Life <= 0f || p.T == null)
                 {
-                    if (p.T != null) Destroy(p.T.gameObject);
+                    ReturnSpark(p);
                     particles.RemoveAt(i);
                     continue;
                 }
@@ -194,6 +278,10 @@ namespace Titan.Game
         void LateUpdate()
         {
             if (cam == null) return;
+            // The FOV punch runs on unscaled time (it plays through the hitstop).
+            float back = fovPunch > 0f ? Mathf.Clamp01((Time.unscaledTime - fovPunchStart) / feel.FovReturnSeconds) : 1f;
+            if (back >= 1f) fovPunch = 0f;
+            cam.fieldOfView = fovBase * (1f - fovPunch * (1f - back));
             if (shakeLeft > 0f)
             {
                 shakeLeft -= Time.deltaTime;

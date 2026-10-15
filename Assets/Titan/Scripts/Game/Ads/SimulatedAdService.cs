@@ -1,4 +1,5 @@
 using System;
+using Titan.Core;
 using Titan.Core.Ads;
 using UnityEngine;
 
@@ -152,9 +153,9 @@ namespace Titan.Game
             GUI.DrawTexture(new Rect(0, 0, w, h), white);
             GUI.color = Color.white;
 
-            GUI.Label(new Rect(w * 0.05f, h * 0.30f, w * 0.9f, 70 * s), "RECLAMĂ SIMULATĂ", title);
+            GUI.Label(new Rect(w * 0.05f, h * 0.30f, w * 0.9f, 70 * s), Loc.T("ad.simTitle"), title);
             GUI.Label(new Rect(w * 0.05f, h * 0.30f + 74 * s, w * 0.9f, 60 * s),
-                "Înlocuitor pentru LevelPlay — nu e o reclamă reală.\n" + (showing == Kind.Rewarded ? "Reclamă cu recompensă" : "Reclamă între runde"), note);
+                Loc.T("ad.simNote") + "\n" + (showing == Kind.Rewarded ? Loc.T("ad.simRewarded") : Loc.T("ad.simBetween")), note);
 
             float length = showing == Kind.Rewarded ? cfg.sim_rewarded_seconds : cfg.sim_inter_seconds;
             var bar = new Rect(w * 0.15f, h * 0.30f + 150 * s, w * 0.7f, 10 * s);
@@ -163,12 +164,12 @@ namespace Titan.Game
             GUI.color = new Color(1f, 0.82f, 0.2f);
             GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(shownFor / length), bar.height), white);
             GUI.color = Color.white;
-            GUI.Label(new Rect(0, bar.yMax + 4 * s, w, 30 * s), Mathf.CeilToInt(Mathf.Max(0f, length - shownFor)) + " s", note);
+            GUI.Label(new Rect(0, bar.yMax + 4 * s, w, 30 * s), Loc.T("common.seconds", Mathf.CeilToInt(Mathf.Max(0f, length - shownFor))), note);
 
             // The close button: rewarded from the start (with a confirmation), interstitial after 2 s.
             bool canClose = showing == Kind.Rewarded || shownFor >= cfg.sim_inter_close_after_s;
             var close = new Rect(w - 70 * s - 12 * s, Screen.height - Screen.safeArea.yMax + 12 * s, 70 * s, 70 * s);
-            if (canClose && !confirmClose && GUI.Button(close, "X", button))
+            if (canClose && !confirmClose && GUI.Button(close, Loc.T("common.close"), button))
             {
                 if (showing == Kind.Rewarded) confirmClose = true;
                 else Finish(AdResult.ClosedEarly);
@@ -179,10 +180,10 @@ namespace Titan.Game
             GUI.color = new Color(0.15f, 0.16f, 0.22f, 1f);
             GUI.DrawTexture(panel, white);
             GUI.color = Color.white;
-            GUI.Label(new Rect(panel.x + 10 * s, panel.y + 10 * s, panel.width - 20 * s, 70 * s), "Dacă închizi acum nu primești recompensa.", note);
+            GUI.Label(new Rect(panel.x + 10 * s, panel.y + 10 * s, panel.width - 20 * s, 70 * s), Loc.T("ad.simCloseWarn"), note);
             OfferCardLayout.Buttons(panel.x + 16 * s, panel.y + 100 * s, panel.width - 32 * s, 80 * s, 12 * s, out var a, out var b);
-            if (GUI.Button(new Rect(a.X, a.Y, a.W, a.H), "Continuă reclama", button)) confirmClose = false;
-            else if (GUI.Button(new Rect(b.X, b.Y, b.W, b.H), "Închide", button)) Finish(AdResult.ClosedEarly);
+            if (GUI.Button(new Rect(a.X, a.Y, a.W, a.H), Loc.T("ad.simKeepWatching"), button)) confirmClose = false;
+            else if (GUI.Button(new Rect(b.X, b.Y, b.W, b.H), Loc.T("ad.simClose"), button)) Finish(AdResult.ClosedEarly);
         }
     }
 }

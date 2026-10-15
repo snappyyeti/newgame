@@ -20,22 +20,22 @@ namespace Titan.Core
         public static RunPlan PlanFor(Profile p) => IsScriptedRun(p) ? RunPlan.Tutorial() : null;
     }
 
-    /// <summary>The hint texts (Romanian; UX-1 moves them into the RO/EN table).</summary>
+    /// <summary>The hint texts (from the RO/EN table, <see cref="Loc"/>).</summary>
     public static class FtueText
     {
-        public const string H1 = "Atinge tunul galben";
-        public const string H2 = "zzz = culoarea e ascunsă în spate. Va trage când apare.";
-        public const string H3 = "Nu umple toate cele 5 locuri!";
-        public const string H4Tip = "Sfat: lasă mereu 1-2 locuri libere.";
+        public static string H1 => Loc.T("ftue.h1");
+        public static string H2 => Loc.T("ftue.h2");
+        public static string H3 => Loc.T("ftue.h3");
+        public static string H4Tip => Loc.T("ftue.h4Tip");
 
         /// <summary>H4: the one-line cause of the first game over.</summary>
         public static string Cause(LoseReason reason)
         {
             switch (reason)
             {
-                case LoseReason.WallReached: return "Titanul a ajuns la zid.";
-                case LoseReason.Deadlock: return "Niciun tun nu mai avea în ce trage.";
-                case LoseReason.SlotsFull: return "Toate cele 5 locuri erau pline cu tunuri care așteptau.";
+                case LoseReason.WallReached: return Loc.T("ftue.causeWall");
+                case LoseReason.Deadlock: return Loc.T("ftue.causeDeadlock");
+                case LoseReason.SlotsFull: return Loc.T("ftue.causeSlots");
                 default: return null;
             }
         }

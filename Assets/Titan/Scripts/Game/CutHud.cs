@@ -26,20 +26,27 @@ namespace Titan.Game
 
         const float BigPopupLife = 1.1f, BigPopupMaxWait = 0.3f;
         BigPopup bigPopup, queuedPopup;
+        /// <summary>Popups are pooled (FEEL-1): at most a few exist, reused piece after piece.</summary>
+        readonly Stack<BigPopup> popupPool = new Stack<BigPopup>();
+
+        void RecyclePopup(BigPopup p)
+        {
+            if (p != null && !popupPool.Contains(p)) popupPool.Push(p);
+        }
 
         void OnPiecePopup(Vector3 world, GameEvent e)
         {
-            var p = new BigPopup
-            {
-                World = world,
-                Rank = !e.Clean ? 0 : e.Part == Monster.Head ? 2 : 1,
-                Chain = e.Chain,
-                Points = e.Points,
-                Mult = e.Mult,
-                Born = Time.time,
-            };
+            PieceJuice(e); // FEEL-1: hitstop, FOV punch, slow-mo, haptics at the moment the piece breaks off on screen
+            var p = popupPool.Count > 0 ? popupPool.Pop() : new BigPopup();
+            p.World = world;
+            p.Rank = !e.Clean ? 0 : e.Part == Monster.Head ? 2 : 1;
+            p.Chain = e.Chain;
+            p.Points = e.Points;
+            p.Mult = e.Mult;
+            p.Born = Time.time;
             if (bigPopup == null || Time.time - bigPopup.Born >= BigPopupLife)
             {
+                RecyclePopup(bigPopup);
                 bigPopup = p;
                 return;
             }
@@ -56,12 +63,14 @@ namespace Titan.Game
             into.Points += p.Points;
             into.World = p.World;
             if (into == bigPopup) into.Born = Mathf.Max(into.Born, Time.time - 0.15f); // stays up, without rising again from the start
+            RecyclePopup(p);
         }
 
         void DrawBigPopup(float s)
         {
             if (bigPopup != null && Time.time - bigPopup.Born >= BigPopupLife)
             {
+                RecyclePopup(bigPopup);
                 bigPopup = queuedPopup;
                 queuedPopup = null;
                 if (bigPopup != null) bigPopup.Born = Time.time;
@@ -72,7 +81,7 @@ namespace Titan.Game
             var sp = cam.WorldToScreenPoint(p.World);
             if (sp.z <= 0) return;
             string text = HudText.PieceLabel(p.Rank > 0, p.Rank == 2 ? Monster.Head : Monster.LeftArm);
-            if (p.Chain >= 2) text += "\nCOMBO x" + p.Chain;
+            if (p.Chain >= 2) text += "\n" + Loc.T("hud.combo", p.Chain);
             text += "\n+" + HudText.Num(p.Points);
             float scale = HudText.PopupScale(p.Chain);
             float pop = age < 0.12f ? Mathf.Lerp(0.6f, 1.1f, age / 0.12f) : age < 0.2f ? Mathf.Lerp(1.1f, 1f, (age - 0.12f) / 0.08f) : 1f;
@@ -103,7 +112,7 @@ namespace Titan.Game
                 GUI.DrawTexture(new Rect(p.x - dot / 2f, p.y - dot / 2f, dot, dot), Glyphs.Dot);
             }
             GUI.color = Color.white;
-            Shadowed(new Rect(c.x - radius, c.y - 12 * s, 2 * radius, 24 * s), "x" + Mathf.Min(game.Chain, cfg.ChainMaxMult), new GUIStyle(small) { fontSize = Mathf.RoundToInt(16 * s) });
+            Shadowed(new Rect(c.x - radius, c.y - 12 * s, 2 * radius, 24 * s), Loc.T("hud.chainX", Mathf.Min(game.Chain, cfg.ChainMaxMult)), new GUIStyle(small) { fontSize = Mathf.RoundToInt(16 * s) });
         }
 
         /// <summary>

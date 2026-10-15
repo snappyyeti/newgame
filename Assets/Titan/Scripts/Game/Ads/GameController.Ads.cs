@@ -140,7 +140,7 @@ namespace Titan.Game
             if (Application.isEditor && Input.GetKeyDown(KeyCode.F10))
             {
                 SimulatedAdService.ForceFail = !SimulatedAdService.ForceFail;
-                ShowBanner("Reclame simulate: " + (SimulatedAdService.ForceFail ? "EȘUEAZĂ (ForceFail)" : "normal"), Color.white, 1.5f);
+                ShowBanner(Loc.T("dev.adsSim", SimulatedAdService.ForceFail ? Loc.T("dev.adsFail") : Loc.T("dev.adsNormal")), Color.white, 1.5f);
             }
 #endif
             reviveOffer?.Update(realDt);
@@ -157,8 +157,8 @@ namespace Titan.Game
             }
             CloseFinishedOffers();
 
-            // The "+1 LOC" wall button: only while the run ticks.
-            if (!game.IsOver && !PlayFrozen)
+            // The "+1 LOC" wall button: only while the run ticks (never under the pause menu).
+            if (!game.IsOver && !PlayFrozen && !paused)
             {
                 CountLine(out int occupied, out int idle);
                 lastOccupied = occupied;
@@ -268,7 +268,7 @@ namespace Titan.Game
             return true;
         }
 
-        static string LossLine(LoseReason r) => r == LoseReason.WallReached ? "Titanul a spart zidul!" : r == LoseReason.Deadlock ? "BLOCAT!" : "Locurile sunt pline!";
+        static string LossLine(LoseReason r) => r == LoseReason.WallReached ? Loc.T("over.lossWall") : r == LoseReason.Deadlock ? Loc.T("over.lossDeadlock") : Loc.T("over.lossSlots");
 
         /// <summary>Completed, the free first use or the fallback: the run continues (no countdown: the 2 s grace covers it).</summary>
         void GrantRevive(bool withoutAd)
@@ -384,7 +384,7 @@ namespace Titan.Game
                 GUI.color = Color.white;
             }
 
-            if (!game.IsOver && slotButton.Visible && slotOffer == null && !PlayFrozen) DrawWallButton(s);
+            if (!game.IsOver && slotButton.Visible && slotOffer == null && !PlayFrozen && !paused) DrawWallButton(s);
 
             if (reviveOffer != null && reviveOffer.IsOpen) DrawReviveCard();
             if (slotOffer != null && slotOffer.IsOpen) DrawSlotCard();
@@ -448,7 +448,7 @@ namespace Titan.Game
         void DrawReviveCard()
         {
             var o = reviveOffer;
-            string status = o.Phase == OfferPhase.Loading ? "Se încarcă reclama" + new string('.', 1 + (int)(Time.realtimeSinceStartup * 3f) % 3)
+            string status = o.Phase == OfferPhase.Loading ? AdText.Loading + new string('.', 1 + (int)(Time.realtimeSinceStartup * 3f) % 3)
                 : o.Phase == OfferPhase.NoAd ? AdText.NoAdNow : null;
             int choice = AdOfferCard.Draw(AdText.ReviveTitle, AdText.ReviveValue, o.Free ? AdText.ReviveAcceptFree : AdText.ReviveAccept, AdText.Decline,
                 AdText.ReviveFooter, o.AcceptEnabled, o.DeclineEnabled, status, !o.Free,
@@ -463,7 +463,7 @@ namespace Titan.Game
             var o = slotOffer;
             int left = adConfig.inrun_help_max_per_run - helpsUsedThisRun;
             int choice = AdOfferCard.Draw(AdText.ExtraSlotTitle, AdText.ExtraSlotValue, o.Free ? AdText.ExtraSlotAcceptFree : AdText.ExtraSlotAccept,
-                AdText.ExtraSlotDecline, AdText.ExtraSlotFooter(left), o.AcceptEnabled, o.DeclineEnabled, o.Phase == OfferPhase.Loading ? "Se încarcă reclama..." : null, !o.Free);
+                AdText.ExtraSlotDecline, AdText.ExtraSlotFooter(left), o.AcceptEnabled, o.DeclineEnabled, o.Phase == OfferPhase.Loading ? AdText.Loading + "..." : null, !o.Free);
             if (choice > 0) o.Accept();
             else if (choice < 0) o.Decline();
             if (choice != 0) CloseFinishedOffers();
@@ -473,10 +473,46 @@ namespace Titan.Game
         {
             var o = breakOffer;
             int choice = AdOfferCard.Draw(AdText.AdBreakTitle, AdText.AdBreakValue, AdText.AdBreakAccept, AdText.Decline, null,
-                o.AcceptEnabled, o.DeclineEnabled, o.Phase == OfferPhase.Loading ? "Se încarcă reclama..." : null);
+                o.AcceptEnabled, o.DeclineEnabled, o.Phase == OfferPhase.Loading ? AdText.Loading + "..." : null);
             if (choice > 0) o.Accept();
             else if (choice < 0) o.Decline();
             if (choice != 0) CloseFinishedOffers();
+        }
+
+        // ---------------------------------------------------------------- the pause menu's row (UX-1 fills, ADS-1 owns)
+
+        /// <summary>
+        /// The pause menu's "Fără reclame 30 min" row (DESIGN.md 10.2 D): the opt-in card when the governor allows the
+        /// ad break now, the non-interactive "Fără reclame încă mm:ss" while a pass runs, nothing otherwise (and never
+        /// in a Titanul Zilei run). The card pauses on top of the pause menu and returns to it. Returns true when the
+        /// row was drawn.
+        /// </summary>
+        bool PauseMenuAdBreakRow(Rect r, float s)
+        {
+            if (DailyRanked) return false;
+            var style = new GUIStyle(small) { fontSize = Mathf.RoundToInt(19 * s), fontStyle = FontStyle.Normal, wordWrap = true };
+            style.normal.textColor = new Color(0.8f, 0.85f, 0.95f);
+            if (governor.AdBreakActive)
+            {
+                GUI.Label(r, AdText.AdBreakRemaining(governor.AdBreakRemainingSeconds), style);
+                return true;
+            }
+            if (breakOffer != null || !governor.CanOffer(Placement.AdBreak, OfferCtx(), out _)) return false;
+            var rowStyle = new GUIStyle(button) { fontSize = Mathf.RoundToInt(22 * s), wordWrap = true };
+            if (GUI.Button(r, AdText.AdBreakLink, rowStyle))
+            {
+                breakOffer = new RewardedOffer(Placement.AdBreak, governor, ads, free => governor.GrantAdBreak(), 0f, false, false, "pause_menu");
+                SyncPause();
+            }
+            // The small "Reclamă" tag at the row's left: the row opens an ad card.
+            var tagRect = new Rect(r.x + 8 * s, r.center.y - 10 * s, 70 * s, 20 * s);
+            GUI.color = new Color(0.85f, 0.85f, 0.88f);
+            GUI.DrawTexture(tagRect, white);
+            GUI.color = Color.white;
+            var tagText = new GUIStyle(small) { fontSize = Mathf.RoundToInt(13 * s) };
+            tagText.normal.textColor = new Color(0.1f, 0.1f, 0.12f);
+            GUI.Label(tagRect, AdText.Tag, tagText);
+            return true;
         }
 
         // ---------------------------------------------------------------- app lifecycle

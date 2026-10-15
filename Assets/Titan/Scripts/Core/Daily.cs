@@ -232,18 +232,18 @@ namespace Titan.Core
         }
     }
 
-    /// <summary>The player-facing texts of Titanul Zilei (Romanian; UX-1 moves them into the RO/EN table).</summary>
+    /// <summary>The player-facing texts of Titanul Zilei (from the RO/EN table, <see cref="Loc"/>).</summary>
     public static class DailyText
     {
-        public const string Title = "Titanul Zilei";
-        public const string Intro = "Încercarea de azi e fără ajutoare și fără reclame — aceeași provocare pentru toți.";
-        public const string Practice = "ANTRENAMENT";
-        public const string ResumeOfficial = "Continuă încercarea oficială";
-        public const string QuitConfirm = "Închei încercarea oficială?";
-        public const string ShieldUsed = "Un scut ți-a păstrat seria.";
-        public const string StreakReset = "Bine ai revenit! Începe o serie nouă azi.";
-        public const string Copied = "Copiat! Lipește-l unde vrei.";
-        public const string CopyButton = "Copiază rezultatul";
+        public static string Title => Loc.T("daily.title");
+        public static string Intro => Loc.T("daily.intro");
+        public static string Practice => Loc.T("daily.practice");
+        public static string ResumeOfficial => Loc.T("daily.resumeOfficial");
+        public static string QuitConfirm => Loc.T("daily.quitConfirm");
+        public static string ShieldUsed => Loc.T("daily.shieldUsed");
+        public static string StreakReset => Loc.T("daily.streakReset");
+        public static string Copied => Loc.T("daily.copied");
+        public static string CopyButton => Loc.T("daily.copy");
 
         public const string Green = "\U0001F7E9", Red = "\U0001F7E5", Grey = "⬜";
 
@@ -274,17 +274,23 @@ namespace Titan.Core
                 int sq = Square(k, defeated, lostOn);
                 squares += sq == 1 ? Green : sq == 2 ? Red : Grey;
             }
-            return "Titanul din Cuburi · Ziua #" + day.ToString(CultureInfo.InvariantCulture) + "\n"
+            return Loc.T("daily.shareTitle", day) + "\n"
                 + squares + "\n"
-                + "Scor " + HudText.Num(score) + " · " + Clock(seconds) + " · " + pieces.ToString(CultureInfo.InvariantCulture) + " bucăți rupte\n"
+                + ResultLine(score, seconds, pieces) + "\n"
                 + storeLink;
+        }
+
+        /// <summary>"Scor {score} · {m:ss} · {pieces} bucăți rupte" (the share text's third line and the daily panel).</summary>
+        public static string ResultLine(int score, float seconds, int pieces)
+        {
+            return Loc.T("daily.resultLine", HudText.Num(score), Clock(seconds), pieces);
         }
 
         /// <summary>The button status: "neîncercat", "în curs: 1/3" (resumable) or "2/3".</summary>
         public static string Status(DailyState d)
         {
-            if (d.status == 0) return "neîncercat";
-            if (d.status == 1) return "în curs: " + d.defeated + "/" + Daily.Titans;
+            if (d.status == 0) return Loc.T("daily.untried");
+            if (d.status == 1) return Loc.T("daily.inProgress", d.defeated, Daily.Titans);
             return d.defeated + "/" + Daily.Titans;
         }
 
@@ -296,9 +302,9 @@ namespace Titan.Core
             return (s / 3600).ToString(CultureInfo.InvariantCulture) + ":" + (s / 60 % 60).ToString("00", CultureInfo.InvariantCulture) + ":" + (s % 60).ToString("00", CultureInfo.InvariantCulture);
         }
 
-        public static string BestStreak(int best) => "Cea mai lungă serie: " + best;
-        public static string CurrentStreak(int current) => current == 1 ? "Serie: 1 zi" : "Serie: " + current + " zile";
-        public static string Shields(int shields) => shields == 1 ? "1 scut" : shields + " scuturi";
+        public static string BestStreak(int best) => Loc.T("daily.bestStreak", best);
+        public static string CurrentStreak(int current) => current == 1 ? Loc.T("daily.streakOne") : Loc.T("daily.streakMany", current);
+        public static string Shields(int shields) => shields == 1 ? Loc.T("daily.shieldOne") : Loc.T("daily.shieldMany", shields);
     }
 
     /// <summary>

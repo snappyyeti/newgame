@@ -101,7 +101,7 @@ namespace Titan.Game
             Shadowed(new Rect(r.x, r.y + 2 * s, r.width, r.height * 0.55f), DailyText.Title + " · " + DailyText.Status(profile.daily), title);
             var sub = new GUIStyle(small) { fontSize = Mathf.RoundToInt(15 * s), fontStyle = FontStyle.Normal };
             sub.normal.textColor = new Color(0.85f, 0.9f, 1f);
-            Shadowed(new Rect(r.x, r.y + r.height * 0.52f, r.width, r.height * 0.42f), "Următorul în " + DailyText.UntilMidnight(System.DateTime.Now), sub);
+            Shadowed(new Rect(r.x, r.y + r.height * 0.52f, r.width, r.height * 0.42f), Loc.T("daily.nextIn", DailyText.UntilMidnight(System.DateTime.Now)), sub);
             return clicked;
         }
 
@@ -111,7 +111,10 @@ namespace Titan.Game
             return DailyText.CurrentStreak(st.current) + " · " + DailyText.Shields(st.shields) + " · " + DailyText.BestStreak(st.best);
         }
 
-        /// <summary>3 drawn squares: green = defeated, red = the titan the attempt ended on, white outline = now, grey = not reached.</summary>
+        /// <summary>
+        /// 3 drawn squares: green with a check = defeated, red with an X = the titan the attempt ended on, white outline =
+        /// now, grey = not reached. The check and the X carry the state without color (UX-1).
+        /// </summary>
         void DailySquares(Vector2 center, int defeated, int lostOn, float s, int current = 0, float size = 18f)
         {
             float d = size * s, gap = d * 0.5f;
@@ -124,6 +127,11 @@ namespace Titan.Game
                 GUI.DrawTexture(new Rect(r.x + 2, r.y + 2, r.width, r.height), white);
                 GUI.color = sq == 1 ? new Color(0.3f, 0.82f, 0.35f) : sq == 2 ? new Color(0.92f, 0.25f, 0.2f) : new Color(0.62f, 0.62f, 0.66f);
                 GUI.DrawTexture(r, white);
+                if (sq != 0)
+                {
+                    GUI.color = new Color(1f, 1f, 1f, 0.95f);
+                    GUI.DrawTexture(new Rect(r.x + d * 0.1f, r.y + d * 0.1f, d * 0.8f, d * 0.8f), sq == 1 ? Glyphs.Check : Glyphs.Ex);
+                }
                 if (k == current && sq == 0)
                 {
                     float t = Mathf.Max(1f, 3 * s * size / 18f);
@@ -169,7 +177,7 @@ namespace Titan.Game
             {
                 DailySquares(new Vector2(panel.center.x, y + 22 * s), d.defeated, d.lostOn, s, 0, 40f);
                 y += 54 * s;
-                Shadowed(new Rect(panel.x, y, panel.width, 30 * s), "Scor " + HudText.Num(d.score) + " · " + DailyText.Clock(d.seconds) + " · " + d.pieces + " bucăți rupte", line);
+                Shadowed(new Rect(panel.x, y, panel.width, 30 * s), DailyText.ResultLine(d.score, d.seconds, d.pieces), line);
                 y += 34 * s;
                 float cw = panel.width * 0.6f;
                 if (GUI.Button(new Rect(panel.center.x - cw / 2f, y, cw, 50 * s), DailyText.CopyButton, new GUIStyle(button) { fontSize = Mathf.RoundToInt(22 * s) }))
@@ -189,18 +197,18 @@ namespace Titan.Game
             }
             else
             {
-                Shadowed(new Rect(panel.x, y, panel.width, 30 * s), d.status == 1 ? "Încercarea oficială: " + DailyText.Status(d) : "Încercarea oficială: neîncercată", line);
+                Shadowed(new Rect(panel.x, y, panel.width, 30 * s), d.status == 1 ? Loc.T("daily.officialStatus", DailyText.Status(d)) : Loc.T("daily.officialUntried"), line);
                 y += 34 * s;
-                Shadowed(new Rect(panel.x + 14 * s, y, panel.width - 28 * s, 44 * s), "Contează doar prima încercare; începe la prima atingere. Apoi poți juca la antrenament oricât.", note);
+                Shadowed(new Rect(panel.x + 14 * s, y, panel.width - 28 * s, 44 * s), Loc.T("daily.onlyFirst"), note);
                 y += 112 * s;
             }
 
             if (afterRun && session.Start.Mode == Telemetry.ModeDailyPractice)
             {
-                Shadowed(new Rect(panel.x, y, panel.width, 26 * s), DailyText.Practice + ": " + HudText.Num(game.Score) + " · cel mai bun azi " + HudText.Num(d.bestPracticeScore), note);
+                Shadowed(new Rect(panel.x, y, panel.width, 26 * s), Loc.T("daily.practiceAfter", DailyText.Practice, HudText.Num(game.Score), HudText.Num(d.bestPracticeScore)), note);
             }
             else if (d.bestPracticeScore > 0)
-                Shadowed(new Rect(panel.x, y, panel.width, 26 * s), DailyText.Practice + " azi: cel mai bun " + HudText.Num(d.bestPracticeScore), note);
+                Shadowed(new Rect(panel.x, y, panel.width, 26 * s), Loc.T("daily.practiceToday", DailyText.Practice, HudText.Num(d.bestPracticeScore)), note);
             y += 30 * s;
 
             // The streak lives here and on the menu only (never on the endless results).
@@ -213,14 +221,14 @@ namespace Titan.Game
             }
             Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 24 * s), StreakLine(), note);
             y += 28 * s;
-            Shadowed(new Rect(panel.x, y, panel.width, 24 * s), "Următorul Titan al Zilei în " + DailyText.UntilMidnight(System.DateTime.Now), note);
+            Shadowed(new Rect(panel.x, y, panel.width, 24 * s), Loc.T("daily.nextDaily", DailyText.UntilMidnight(System.DateTime.Now)), note);
             y += 34 * s;
 
             float bw = panel.width * 0.7f;
             bool ready = PickReady || pickTask == null || pickTask.IsCompleted;
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && ready;
-            string main = !ready ? "Se pregătește titanul zilei…" : finished ? DailyText.Practice : d.status == 1 ? DailyText.ResumeOfficial : "Începe încercarea oficială";
+            string main = !ready ? Loc.T("daily.preparing") : finished ? DailyText.Practice : d.status == 1 ? DailyText.ResumeOfficial : Loc.T("daily.startOfficial");
             if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 84 * s), main, new GUIStyle(button) { fontSize = Mathf.RoundToInt(26 * s), wordWrap = true }))
             {
                 GUI.enabled = wasEnabled;
@@ -233,13 +241,13 @@ namespace Titan.Game
             if (afterRun)
             {
                 // Back to the endless game. No interstitial after a daily run (the gate sees isDailyRanked).
-                if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 60 * s), "Joc normal", secondary))
+                if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 60 * s), Loc.T("daily.normalGame"), secondary))
                 {
                     LeaveResults(RunStart.Fresh(NewSeed()));
                     return;
                 }
             }
-            else if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 60 * s), "Înapoi", secondary))
+            else if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 60 * s), Loc.T("common.back"), secondary))
             {
                 screen = dailyReturn == UiScreen.Play && game != null ? UiScreen.Play : UiScreen.Menu;
             }
@@ -266,15 +274,15 @@ namespace Titan.Game
                 GUI.color = Color.white;
                 Shadowed(new Rect(card.x, card.y + 16 * s, card.width, 40 * s), DailyText.QuitConfirm, new GUIStyle(center) { fontSize = Mathf.RoundToInt(26 * s) });
                 var note = new GUIStyle(small) { fontSize = Mathf.RoundToInt(16 * s), wordWrap = true, fontStyle = FontStyle.Normal };
-                Shadowed(new Rect(card.x + 12 * s, card.y + 60 * s, card.width - 24 * s, 44 * s), "Rezultatul de azi rămâne cel de acum.", note);
+                Shadowed(new Rect(card.x + 12 * s, card.y + 60 * s, card.width - 24 * s, 44 * s), Loc.T("daily.quitNote"), note);
                 float bw = card.width * 0.42f;
-                if (GUI.Button(new Rect(card.x + card.width * 0.05f, card.y + 130 * s, bw, 70 * s), "Da, închei", small2))
+                if (GUI.Button(new Rect(card.x + card.width * 0.05f, card.y + 130 * s, bw, 70 * s), Loc.T("daily.quitYes"), small2))
                 {
                     if (daily.QuitOfficial()) SaveProfile();
                     LeaveDailyRun();
                     return;
                 }
-                if (GUI.Button(new Rect(card.xMax - card.width * 0.05f - bw, card.y + 130 * s, bw, 70 * s), "Nu, continui", small2)) quitConfirm = false;
+                if (GUI.Button(new Rect(card.xMax - card.width * 0.05f - bw, card.y + 130 * s, bw, 70 * s), Loc.T("daily.quitNo"), small2)) quitConfirm = false;
                 return;
             }
 
@@ -289,16 +297,16 @@ namespace Titan.Game
                 Shadowed(new Rect(box.x + 10 * s, box.y + 6 * s, box.width - 20 * s, 50 * s), DailyText.Intro, note);
                 var hint = new GUIStyle(note);
                 hint.normal.textColor = HintYellow;
-                Shadowed(new Rect(box.x + 10 * s, box.y + 58 * s, box.width - 20 * s, 48 * s), "Încercarea oficială începe la prima atingere.", hint);
-                if (GUI.Button(corner, "Înapoi", small2)) LeaveDailyRun();
+                Shadowed(new Rect(box.x + 10 * s, box.y + 58 * s, box.width - 20 * s, 48 * s), Loc.T("daily.startsAtTap"), hint);
+                if (GUI.Button(corner, Loc.T("common.back"), small2)) LeaveDailyRun();
                 return;
             }
             if (practice)
             {
-                if (GUI.Button(corner, "Ieși", small2)) LeaveDailyRun();
+                if (GUI.Button(corner, Loc.T("daily.exit"), small2)) LeaveDailyRun();
                 return;
             }
-            if (GUI.Button(corner, "Închei", small2)) quitConfirm = true;
+            if (GUI.Button(corner, Loc.T("daily.end"), small2)) quitConfirm = true;
         }
     }
 }

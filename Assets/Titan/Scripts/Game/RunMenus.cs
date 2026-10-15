@@ -31,9 +31,9 @@ namespace Titan.Game
             GUI.color = Color.white;
 
             float y = panel.y + 16 * s;
-            string reason = game.Lost == LoseReason.WallReached ? "Titanul a spart zidul!"
-                : game.Lost == LoseReason.Deadlock ? "BLOCAT! Niciun tun nu mai\nare în ce trage."
-                : "Cele 5 locuri sunt pline\nși niciun tun nu are în ce trage!";
+            string reason = game.Lost == LoseReason.WallReached ? Loc.T("over.wall")
+                : game.Lost == LoseReason.Deadlock ? Loc.T("over.deadlock")
+                : Loc.T("over.slotsFull");
             var reasonStyle = new GUIStyle(center) { fontSize = Mathf.RoundToInt(26 * s) };
             Shadowed(new Rect(panel.x, y, panel.width, 66 * s), reason, reasonStyle);
             y += 70 * s;
@@ -56,9 +56,9 @@ namespace Titan.Game
             var line = new GUIStyle(small) { fontSize = Mathf.RoundToInt(19 * s), wordWrap = true };
             Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), HudText.RunStats(game.TitansDefeated, game.StarsEarned, game.PiecesCut), line);
             y += 30 * s;
-            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), "Cea mai bună tăietură: +" + HudText.Num(game.MaxPiecePoints), line);
+            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), Loc.T("over.bestCut", HudText.Num(game.MaxPiecePoints)), line);
             y += 28 * s;
-            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), "Combo maxim: x" + game.MaxChain, line);
+            Shadowed(new Rect(panel.x + 10 * s, y, panel.width - 20 * s, 28 * s), Loc.T("over.maxCombo", game.MaxChain), line);
             y += 36 * s;
 
             var goal = new GUIStyle(line);
@@ -72,7 +72,7 @@ namespace Titan.Game
             var note = new GUIStyle(small) { fontSize = Mathf.RoundToInt(14 * s), fontStyle = FontStyle.Normal };
             note.normal.textColor = new Color(0.85f, 0.85f, 0.9f);
             float noteH = resultsButtonNote != null ? 18 * s : 0f;
-            if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 100 * s), "Joacă din nou", button))
+            if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 100 * s), Loc.T("over.playAgain"), button))
             {
                 GUI.enabled = wasEnabled;
                 LeaveResults(session.PlayAgainStart(NewSeed()));
@@ -84,7 +84,7 @@ namespace Titan.Game
             var secondary = new GUIStyle(button) { fontSize = Mathf.RoundToInt(24 * s) };
             if (hasCheckpoint)
             {
-                if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), "Reia ciclul (titanul #" + profile.checkpoint.n + ")", secondary))
+                if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), Loc.T("over.resumeCycle", profile.checkpoint.n), secondary))
                 {
                     GUI.enabled = wasEnabled;
                     LeaveResults(RunSession.ResumeStart(profile).Value);
@@ -94,7 +94,7 @@ namespace Titan.Game
                 if (resultsButtonNote != null) GUI.Label(new Rect(panel.x, y, panel.width, noteH), resultsButtonNote, note);
                 y += 10 * s + noteH;
             }
-            if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), "Joc nou", secondary))
+            if (GUI.Button(new Rect(panel.center.x - bw / 2f, y, bw, 66 * s), Loc.T("menu.newGame"), secondary))
             {
                 GUI.enabled = wasEnabled;
                 var start = RunSession.NewGameStart(profile, NewSeed());
@@ -133,7 +133,7 @@ namespace Titan.Game
             var cp = profile.checkpoint;
             bool hasCheckpoint = profile.HasCheckpoint;
             float y = Screen.height * 0.18f;
-            Shadowed(new Rect(0, y, w, 60 * s), "Titanul din Cuburi", new GUIStyle(big) { fontSize = Mathf.RoundToInt(44 * s) });
+            Shadowed(new Rect(0, y, w, 60 * s), Loc.T("common.title"), new GUIStyle(big) { fontSize = Mathf.RoundToInt(44 * s) });
             y += 80 * s;
             var note = new GUIStyle(small) { fontSize = Mathf.RoundToInt(19 * s), wordWrap = true };
             note.normal.textColor = new Color(0.8f, 0.85f, 0.95f);
@@ -148,10 +148,10 @@ namespace Titan.Game
             bool go = false;
             if (hasCheckpoint)
             {
-                Shadowed(new Rect(w * 0.1f, y, w * 0.8f, 52 * s), "Punct de salvare: același titan, cu scorul de atunci (" + HudText.Num(cp.score) + ").", note);
+                Shadowed(new Rect(w * 0.1f, y, w * 0.8f, 52 * s), Loc.T("menu.checkpointNote", HudText.Num(cp.score)), note);
                 y += 60 * s;
                 GUI.SetNextControlName("continue");
-                go = GUI.Button(new Rect((w - bw) / 2f, y, bw, 100 * s), "Continuă (titanul #" + cp.n + ")", button);
+                go = GUI.Button(new Rect((w - bw) / 2f, y, bw, 100 * s), Loc.T("menu.continue", cp.n), button);
                 GUI.FocusControl("continue");
                 var e = Event.current;
                 if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter || e.keyCode == KeyCode.Space))
@@ -166,7 +166,7 @@ namespace Titan.Game
                 }
                 y += 116 * s;
             }
-            if (GUI.Button(new Rect((w - bw) / 2f, y, bw, hasCheckpoint ? 70 * s : 100 * s), hasCheckpoint ? "Joc nou" : "Joacă", hasCheckpoint ? new GUIStyle(button) { fontSize = Mathf.RoundToInt(26 * s) } : button))
+            if (GUI.Button(new Rect((w - bw) / 2f, y, bw, hasCheckpoint ? 70 * s : 100 * s), hasCheckpoint ? Loc.T("menu.newGame") : Loc.T("menu.play"), hasCheckpoint ? new GUIStyle(button) { fontSize = Mathf.RoundToInt(26 * s) } : button))
             {
                 var start = RunSession.NewGameStart(profile, NewSeed());
                 SaveProfile();

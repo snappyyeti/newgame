@@ -154,6 +154,20 @@ namespace Titan.Core
             return signal;
         }
 
+        /// <summary>
+        /// "Joc nou" from the pause menu (UX-1): the run ends here without a game over. It counts as a finished run
+        /// (run_length and run_end with reason <see cref="Telemetry.ReasonAbandoned"/>, totalRuns + 1) and its score
+        /// still counts toward the record. The checkpoint is kept. Returns the signals (always Save | RunEnded).
+        /// </summary>
+        public SessionSignal Abandon()
+        {
+            telemetry?.Track(Telemetry.RunLength, (int)Math.Round(Seconds), Telemetry.ReasonAbandoned);
+            telemetry?.Track(Telemetry.RunEnd, Game.Level, Telemetry.ReasonAbandoned);
+            Profile.totalRuns++;
+            KeepBest();
+            return SessionSignal.Save | SessionSignal.RunEnded;
+        }
+
         /// <summary>Once per frame, after the events: play time and the record crossing.</summary>
         public SessionSignal Update(float realDt)
         {
@@ -178,7 +192,7 @@ namespace Titan.Core
 
     /// <summary>
     /// The player-facing texts of the record chase and the cut scoring (RET-2, CORE-5), as pure functions so the rules
-    /// ("true numbers only") are unit tested. Romanian; UX-1 moves them into the RO/EN table.
+    /// ("true numbers only") are unit tested. The words come from the RO/EN table (<see cref="Loc"/>, UX-1).
     /// </summary>
     public static class HudText
     {
@@ -187,14 +201,18 @@ namespace Titan.Core
         /// <summary>The in-run "Record în N" marker shows from 80% of the record.</summary>
         public const int PbMarkerPercent = 80;
 
-        /// <summary>Thousands with a dot, Romanian style: 41200 → "41.200".</summary>
-        public static string Num(int n) => n.ToString("#,0", CultureInfo.InvariantCulture).Replace(',', '.');
+        /// <summary>Thousands with a dot in Romanian (41200 → "41.200"), with a comma in English ("41,200").</summary>
+        public static string Num(int n)
+        {
+            string s = n.ToString("#,0", CultureInfo.InvariantCulture);
+            return Loc.Current == Lang.Ro ? s.Replace(',', '.') : s;
+        }
 
         /// <summary>True while 80% of the record ≤ score &lt; record (record &gt; 0).</summary>
         public static bool ShowPbMarker(int score, int best) => best > 0 && score < best && 100L * score >= (long)PbMarkerPercent * best;
 
         /// <summary>"Record în 2.300", or null when the marker is off.</summary>
-        public static string PbMarker(int score, int best) => ShowPbMarker(score, best) ? "Record în " + Num(best - score) : null;
+        public static string PbMarker(int score, int best) => ShowPbMarker(score, best) ? Loc.T("hud.recordIn", Num(best - score)) : null;
 
         /// <summary>
         /// "Ai fost la X% din record!" (X = floor(100 × score / best)) only when 85% of the record ≤ score ≤ record;
@@ -203,18 +221,18 @@ namespace Titan.Core
         public static string NearMissText(int score, int best)
         {
             if (best <= 0 || score > best || 100L * score < (long)NearMissDisplayPercent * best) return null;
-            return "Ai fost la " + (100L * score / best) + "% din record!";
+            return Loc.T("over.nearRecord", 100L * score / best);
         }
 
         /// <summary>Game-over line 3: "RECORD NOU!", the near-miss line, or "Record: {best}".</summary>
         public static string RecordLine(int score, int best, bool newBest)
         {
-            if (newBest) return "RECORD NOU!";
-            return NearMissText(score, best) ?? "Record: " + Num(best);
+            if (newBest) return Loc.T("hud.recordNew");
+            return NearMissText(score, best) ?? Loc.T("over.recordValue", Num(best));
         }
 
         /// <summary>Game-over line 4.</summary>
-        public static string RunStats(int titans, int stars, int pieces) => "Titani: " + titans + " · Stele: " + stars + " · Bucăți rupte: " + pieces;
+        public static string RunStats(int titans, int stars, int pieces) => Loc.T("over.runStats", titans, stars, pieces);
 
         /// <summary>
         /// Game-over line 5, first match wins: the next checkpoint is one titan away (the one the run ended on), the
@@ -222,16 +240,16 @@ namespace Titan.Core
         /// </summary>
         public static string NextGoal(int lostOnTitan, int bestTitanN, bool dailyPending)
         {
-            if (RunSession.IsCheckpointTitan(lostOnTitan + 1)) return "Încă un titan până la punctul de salvare #" + (lostOnTitan + 1);
-            if (dailyPending) return "Titanul Zilei te așteaptă";
-            return "Cel mai departe: titanul #" + bestTitanN;
+            if (RunSession.IsCheckpointTitan(lostOnTitan + 1)) return Loc.T("over.goalCheckpoint", lostOnTitan + 1);
+            if (dailyPending) return Loc.T("over.goalDaily");
+            return Loc.T("over.goalFurthest", bestTitanN);
         }
 
         /// <summary>The first line of a piece popup.</summary>
         public static string PieceLabel(bool clean, int part)
         {
-            if (clean && part == Monster.Head) return "DECAPITARE!";
-            return clean ? "TĂIETURĂ CURATĂ!" : "BUCATĂ RUPTĂ!";
+            if (clean && part == Monster.Head) return Loc.T("piece.head");
+            return clean ? Loc.T("piece.clean") : Loc.T("piece.broken");
         }
 
         /// <summary>Popup size: 1 + 0.15 × (chain − 1), at most 1.6.</summary>
@@ -240,8 +258,8 @@ namespace Titan.Core
         /// <summary>The one-line reason under a grey star, or null when the star was earned.</summary>
         public static string MissingStarReason(int star, int maxLine)
         {
-            if (star == Stars.Decapitation) return "Capul nu a căzut întreg";
-            if (star == Stars.CleanLine) return "Ai avut " + maxLine + " tunuri pe zid";
+            if (star == Stars.Decapitation) return Loc.T("star.noHead");
+            if (star == Stars.CleanLine) return Loc.T("star.lineCount", maxLine);
             return null;
         }
     }

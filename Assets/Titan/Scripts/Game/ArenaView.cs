@@ -23,15 +23,8 @@ namespace Titan.Game
         const float SalvageFlyTime = 0.3f;
         const float SalvageCountTime = 0.3f;
 
-        public static readonly Color[] Palette =
-        {
-            new Color(0.93f, 0.23f, 0.21f), // red
-            new Color(0.18f, 0.47f, 0.95f), // blue
-            new Color(1.00f, 0.82f, 0.12f), // yellow
-            new Color(0.24f, 0.78f, 0.30f), // green
-            new Color(0.62f, 0.30f, 0.88f), // purple
-            new Color(1.00f, 0.52f, 0.10f), // orange
-        };
+        /// <summary>The 6 palette colors (red, blue, yellow, green, purple, orange): <see cref="ColorStyle.Palette"/>.</summary>
+        public static Color[] Palette => ColorStyle.Palette;
 
         TitanGame game;
         TitanConfig config;
@@ -41,9 +34,39 @@ namespace Titan.Game
         Transform runRoot;
         bool firstSpawnOfRun;
 
-        /// <summary>Projectiles are pooled; the ones in flight are returned on Reset.</summary>
+        /// <summary>
+        /// Projectiles are pooled, and the per-shot animations (flight, recoil, the hit cube's pop) are plain lists
+        /// stepped in Update: a shot creates no GameObject and starts no coroutine (FEEL-1).
+        /// </summary>
         readonly Stack<Transform> projectilePool = new Stack<Transform>();
-        readonly List<Transform> projectilesInFlight = new List<Transform>();
+        readonly List<Flight> flights = new List<Flight>();
+        readonly List<Recoiling> recoils = new List<Recoiling>();
+        readonly List<Popping> pops = new List<Popping>();
+        readonly List<Renderer> rendererScratch = new List<Renderer>();
+        readonly FeelConfig feel = new FeelConfig();
+
+        struct Flight
+        {
+            public Transform Bullet, Cube;
+            public Vector3 From;
+            public float T;
+            public int Color, Slot;
+        }
+
+        struct Recoiling
+        {
+            public Transform Pivot;
+            public float T;
+        }
+
+        struct Popping
+        {
+            public Transform T;
+            public Vector3 Scale;
+            public float Time;
+        }
+
+        static readonly Vector3 PivotRest = new Vector3(0, 0.6f, 0);
 
         /// <summary>Joint stitches and the limb each one holds (gold rim while the limb would still fall clean, CORE-5).</summary>
         readonly List<Stitch> stitches = new List<Stitch>();
@@ -56,7 +79,8 @@ namespace Titan.Game
             public int Part;
         }
 
-        Material[][] cubeMats;
+        /// <summary>One shared patterned material per color for the cubes, one plain per color (UX-1, <see cref="ColorStyle"/>).</summary>
+        Material[] cubeMats;
         Material[] colorMats;
         Material darkMat, metalMat, stitchMat;
 
@@ -143,18 +167,12 @@ namespace Titan.Game
             cam = camera;
             fx = effects;
 
-            cubeMats = new Material[Palette.Length][];
+            cubeMats = new Material[Palette.Length];
             colorMats = new Material[Palette.Length];
             for (int c = 0; c < Palette.Length; c++)
             {
-                colorMats[c] = MakeMaterial(Palette[c]);
-                // Three shades per color give the voxels a hand-made look.
-                cubeMats[c] = new[]
-                {
-                    MakeMaterial(Palette[c] * 0.92f),
-                    colorMats[c],
-                    MakeMaterial(Color.Lerp(Palette[c], Color.white, 0.12f)),
-                };
+                cubeMats[c] = ColorStyle.CubeMaterial(c, MakeMaterial);
+                colorMats[c] = ColorStyle.PlainMaterial(c, MakeMaterial);
             }
             darkMat = MakeMaterial(new Color(0.20f, 0.21f, 0.24f));
             stitchMat = MakeMaterial(Color.white);
@@ -204,8 +222,10 @@ namespace Titan.Game
         public void Reset(TitanGame titanGame)
         {
             StopAllCoroutines();
-            foreach (var p in projectilesInFlight) ReturnProjectile(p);
-            projectilesInFlight.Clear();
+            foreach (var f in flights) ReturnProjectile(f.Bullet);
+            flights.Clear();
+            recoils.Clear();
+            pops.Clear();
             if (runRoot != null) Destroy(runRoot.gameObject);
             runRoot = new GameObject("Run").transform;
             runRoot.SetParent(transform, false);
@@ -290,6 +310,9 @@ namespace Titan.Game
         {
             var rot = Quaternion.Euler(20f, 0, 0);
             cam.transform.rotation = rot;
+            // Fit with the resting field of view: a FOV punch running right now must not move the camera back.
+            float fovNow = cam.fieldOfView;
+            cam.fieldOfView = fx.BaseFov;
             var m = game.Monster;
             float halfW = Mathf.Max(Mathf.Abs(m.MinX), m.MaxX) + 0.5f;
             float top = m.MaxY + 1f;
@@ -321,6 +344,7 @@ namespace Titan.Game
                 cameraReady = true;
             }
             cam.transform.position = cameraBase;
+            cam.fieldOfView = fovNow;
             fx.SetCameraBase(cameraBase);
         }
 
@@ -339,6 +363,7 @@ namespace Titan.Game
         void Update()
         {
             if (game == null) return;
+            StepShots(Time.deltaTime);
             UpdateTitanPose();
             UpdateStitches();
             for (int i = 0; i < emptyRings.Length; i++)
@@ -519,6 +544,29 @@ namespace Titan.Game
 
         /// <summary>Screen position (GUI coordinates, y down) above a tray cannon or a line cannon, or null.</summary>
         public Vector2? TrayLabel(int i) => Label(tray[i]);
+
+        /// <summary>
+        /// Where a tray cannon's ammo tag hangs: just in front of (below, on screen) its pad, so it never meets the
+        /// slot pips on the wall face, which the cannon tops reach on tall phones (UX-1 layout check). The tag's top
+        /// edge sits here.
+        /// </summary>
+        public Vector2? TrayTag(int i) => TagBelow(tray[i]);
+
+        Vector2? TagBelow(CannonView c)
+        {
+            if (c == null || c.Root == null || Time.time < c.ShowFrom) return null;
+            var p = cam.WorldToScreenPoint(c.Root.position + new Vector3(0f, 0f, -1.45f));
+            if (p.z <= 0) return null;
+            return new Vector2(p.x, Screen.height - p.y);
+        }
+
+        /// <summary>Screen distance between two neighbouring firing slots (line tags are no wider than this).</summary>
+        public float LineSlotSpacing()
+        {
+            var a = LineSlotCenter(0);
+            var b = LineSlotCenter(1);
+            return a.HasValue && b.HasValue ? Mathf.Abs(b.Value.x - a.Value.x) : Screen.width / 6f;
+        }
         public Vector2? LineLabel(int s) => Label(line[s]);
 
         /// <summary>The ammo the tray label shows now (it counts down after a salvage), or the game's value.</summary>
@@ -529,7 +577,7 @@ namespace Titan.Game
         {
             foreach (var c in dyingTray)
             {
-                var p = Label(c);
+                var p = TagBelow(c);
                 if (p.HasValue) draw(p.Value, c.Color, c.ShownAmmo);
             }
         }
@@ -547,7 +595,7 @@ namespace Titan.Game
                     continue;
                 }
                 if (k < 0f) continue;
-                var to = Label(f.Target);
+                var to = TagBelow(f.Target);
                 var from = cam.WorldToScreenPoint(f.From);
                 if (!to.HasValue || from.z <= 0) continue;
                 float e = Mathf.Clamp01(k);
@@ -669,11 +717,10 @@ namespace Titan.Game
             riseStart = Time.time;
             riseDepth = game.Monster.MaxY + 2f;
             monsterRoot.position = new Vector3(0, -riseDepth, zShown);
-            var rng = new System.Random(level * 7919);
             foreach (var kv in game.Monster.Cubes)
             {
                 var c = kv.Key;
-                var mat = cubeMats[kv.Value][rng.Next(3)];
+                var mat = cubeMats[kv.Value];
                 var t = Primitive(PrimitiveType.Cube, "Cube", monsterRoot, mat, false);
                 t.localPosition = new Vector3(c.X, c.Y + 0.5f, c.Z + 0.5f);
                 t.localScale = Vector3.one * CubeScale;
@@ -689,16 +736,16 @@ namespace Titan.Game
             {
                 case TitanRole.Sprint:
                     fx.SprintCue();
-                    Banner?.Invoke("TITAN RAPID!", BannerGreen, 1.2f);
+                    Banner?.Invoke(Loc.T("hud.sprint"), BannerGreen, 1.2f);
                     break;
                 case TitanRole.Boss:
                     fx.Roar();
                     fx.Shake(0.3f, 0.6f);
-                    Banner?.Invoke("TITAN GIGANT!", BannerRed, 1.8f);
+                    Banner?.Invoke(Loc.T("hud.boss"), BannerRed, 1.8f);
                     break;
                 default:
                     fx.Roar();
-                    Banner?.Invoke("TITANUL #" + level, BannerWhite, 1.4f);
+                    Banner?.Invoke(Loc.T("hud.titanN", level), BannerWhite, 1.4f);
                     break;
             }
         }
@@ -847,7 +894,7 @@ namespace Titan.Game
             var c = line[e.Slot];
             line[e.Slot] = null;
             fx.Salvage();
-            Popup?.Invoke(slotPos[e.Slot] + Vector3.up * 2.2f, "RECUPERAT +" + e.Points);
+            Popup?.Invoke(slotPos[e.Slot] + Vector3.up * 2.2f, Loc.T("hud.salvaged", e.Points));
             if (c != null) StartCoroutine(SpinAndFly(c.Root, 0.35f, 6f));
         }
 
@@ -916,29 +963,71 @@ namespace Titan.Game
             if (cannon != null)
             {
                 cannon.Pivot.rotation = Quaternion.FromToRotation(Vector3.up, (cube.position - cannon.Pivot.position).normalized);
-                StartCoroutine(Recoil(cannon.Pivot));
+                StartRecoil(cannon.Pivot);
             }
             fx.Shot();
-            StartCoroutine(Projectile(from, cube, e.Color));
+            var bullet = TakeProjectile(colorMats[e.Color]);
+            bullet.position = from;
+            flights.Add(new Flight { Bullet = bullet, Cube = cube, From = from, Color = e.Color, Slot = e.Slot });
         }
 
-        IEnumerator Projectile(Vector3 from, Transform cube, int color)
+        /// <summary>Steps every projectile, recoil and hit pop (they replace three coroutines per shot).</summary>
+        void StepShots(float dt)
         {
-            var bullet = TakeProjectile(colorMats[color]);
-            bullet.position = from;
-            float t = 0f;
-            while (t < ProjectileTime && cube != null)
+            for (int i = flights.Count - 1; i >= 0; i--)
             {
-                t += Time.deltaTime;
-                bullet.position = Vector3.Lerp(from, cube.position, Mathf.Clamp01(t / ProjectileTime));
-                yield return null;
+                var f = flights[i];
+                if (f.Cube != null && f.T < ProjectileTime)
+                {
+                    f.T += dt;
+                    f.Bullet.position = Vector3.Lerp(f.From, f.Cube.position, Mathf.Clamp01(f.T / ProjectileTime));
+                    flights[i] = f;
+                    continue;
+                }
+                flights.RemoveAt(i);
+                ReturnProjectile(f.Bullet);
+                if (f.Cube == null) continue;
+                fx.Burst(f.Cube.position, colorMats[f.Color], 6, 6f);
+                fx.Hit(f.Slot);
+                pops.Add(new Popping { T = f.Cube, Scale = f.Cube.localScale });
             }
-            projectilesInFlight.Remove(bullet);
-            ReturnProjectile(bullet);
-            if (cube == null) yield break;
-            fx.Burst(cube.position, colorMats[color], 6, 6f);
-            fx.Hit();
-            StartCoroutine(PopAndDestroy(cube));
+            for (int i = recoils.Count - 1; i >= 0; i--)
+            {
+                var r = recoils[i];
+                r.T += dt;
+                if (r.Pivot == null || r.T >= 0.1f)
+                {
+                    if (r.Pivot != null) r.Pivot.localPosition = PivotRest;
+                    recoils.RemoveAt(i);
+                    continue;
+                }
+                r.Pivot.localPosition = PivotRest - r.Pivot.parent.InverseTransformDirection(r.Pivot.up) * 0.12f * Mathf.Sin(r.T / 0.1f * Mathf.PI);
+                recoils[i] = r;
+            }
+            for (int i = pops.Count - 1; i >= 0; i--)
+            {
+                var p = pops[i];
+                p.Time += dt;
+                if (p.T == null || p.Time >= 0.08f)
+                {
+                    if (p.T != null) Destroy(p.T.gameObject);
+                    pops.RemoveAt(i);
+                    continue;
+                }
+                p.T.localScale = p.Scale * (1f + 0.4f * (p.Time / 0.08f));
+                pops[i] = p;
+            }
+        }
+
+        void StartRecoil(Transform pivot)
+        {
+            for (int i = 0; i < recoils.Count; i++)
+                if (recoils[i].Pivot == pivot)
+                {
+                    recoils[i] = new Recoiling { Pivot = pivot };
+                    return;
+                }
+            recoils.Add(new Recoiling { Pivot = pivot });
         }
 
         Transform TakeProjectile(Material mat)
@@ -955,7 +1044,6 @@ namespace Titan.Game
                 bullet.localScale = Vector3.one * 0.35f;
             }
             bullet.GetComponent<Renderer>().sharedMaterial = mat;
-            projectilesInFlight.Add(bullet);
             return bullet;
         }
 
@@ -983,16 +1071,19 @@ namespace Titan.Game
             foreach (var p in parts) center += p.position;
             center /= parts.Count;
 
-            // The piece becomes one rigid body made of its cubes and tumbles down.
+            // The piece becomes one rigid body made of its cubes and tumbles down. A big piece (> 60 cubes) is combined
+            // into one mesh per material on the way down, with one box collider (FEEL-1 performance budget).
             var root = new GameObject("Piece").transform;
             root.SetParent(runRoot, false);
             root.position = center;
+            bool combine = parts.Count > feel.PieceMeshCombineThreshold;
             foreach (var p in parts)
             {
                 if (p == null) continue;
                 p.SetParent(root, true);
-                p.gameObject.AddComponent<BoxCollider>();
+                if (!combine) p.gameObject.AddComponent<BoxCollider>();
             }
+            if (combine) CombinePiece(root, parts);
             var body = root.gameObject.AddComponent<Rigidbody>();
             body.mass = Mathf.Max(1f, parts.Count * 0.5f);
             float side = Mathf.Sign(center.x);
@@ -1006,6 +1097,52 @@ namespace Titan.Game
             if (root == null) yield break;
             foreach (Transform p in root) StartCoroutine(ShrinkAway(p, 0.5f));
             Destroy(root.gameObject, 0.6f);
+        }
+
+        /// <summary>
+        /// Replaces the cubes of a falling piece by one combined mesh per material (cubes, stitches, glove frames) and
+        /// one box collider around them. The meshes are destroyed with the piece (<see cref="MeshOwner"/>).
+        /// </summary>
+        void CombinePiece(Transform root, List<Transform> parts)
+        {
+            var groups = new Dictionary<Material, List<CombineInstance>>();
+            var toLocal = root.worldToLocalMatrix;
+            var bounds = new Bounds();
+            bool any = false;
+            foreach (var p in parts)
+            {
+                if (p == null) continue;
+                p.GetComponentsInChildren(false, rendererScratch);
+                foreach (var r in rendererScratch)
+                {
+                    if (!r.enabled || r.sharedMaterial == null) continue;
+                    var mf = r.GetComponent<MeshFilter>();
+                    if (mf == null || mf.sharedMesh == null) continue;
+                    if (!groups.TryGetValue(r.sharedMaterial, out var list)) groups[r.sharedMaterial] = list = new List<CombineInstance>();
+                    list.Add(new CombineInstance { mesh = mf.sharedMesh, transform = toLocal * r.transform.localToWorldMatrix });
+                }
+                var cell = new Bounds(root.InverseTransformPoint(p.position), Vector3.one * CubeScale);
+                if (any) bounds.Encapsulate(cell);
+                else bounds = cell;
+                any = true;
+                p.gameObject.SetActive(false);
+                Destroy(p.gameObject);
+            }
+            var owner = root.gameObject.AddComponent<MeshOwner>();
+            foreach (var kv in groups)
+            {
+                var mesh = new Mesh();
+                if (kv.Value.Count * 24 > 65000) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                mesh.CombineMeshes(kv.Value.ToArray(), true, true);
+                owner.Meshes.Add(mesh);
+                var part = new GameObject("PieceMesh");
+                part.transform.SetParent(root, false);
+                part.AddComponent<MeshFilter>().sharedMesh = mesh;
+                part.AddComponent<MeshRenderer>().sharedMaterial = kv.Key;
+            }
+            var box = root.gameObject.AddComponent<BoxCollider>();
+            box.center = bounds.center;
+            box.size = bounds.size;
         }
 
         IEnumerator RetireCannon(int slot)
@@ -1108,19 +1245,6 @@ namespace Titan.Game
             t.localScale = Vector3.one * endScale;
         }
 
-        static IEnumerator Recoil(Transform pivot)
-        {
-            var rest = pivot.localPosition;
-            float time = 0f;
-            while (time < 0.1f && pivot != null)
-            {
-                time += Time.deltaTime;
-                pivot.localPosition = rest - pivot.parent.InverseTransformDirection(pivot.up) * 0.12f * Mathf.Sin(Mathf.Clamp01(time / 0.1f) * Mathf.PI);
-                yield return null;
-            }
-            if (pivot != null) pivot.localPosition = rest;
-        }
-
         static IEnumerator PopIn(Transform t, float scale, float duration)
         {
             float time = 0f;
@@ -1142,19 +1266,6 @@ namespace Titan.Game
                 yield return new WaitForSeconds(delay);
             }
             if (t != null) yield return StartCoroutine(PopIn(t, scale, duration));
-        }
-
-        static IEnumerator PopAndDestroy(Transform t)
-        {
-            float time = 0f;
-            var s = t.localScale;
-            while (time < 0.08f && t != null)
-            {
-                time += Time.deltaTime;
-                t.localScale = s * (1f + 0.4f * (time / 0.08f));
-                yield return null;
-            }
-            if (t != null) Destroy(t.gameObject);
         }
 
         static IEnumerator ShrinkAway(Transform t, float duration)
